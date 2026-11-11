@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Neon disc with a pulse line. Art stays inside the centre 66x66 safe zone. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!-- outer glow ring -->
+    <path android:fillColor="#00000000" android:strokeColor="#3300F0FF" android:strokeWidth="6"
+        android:pathData="M54,54m-29,0a29,29 0,1 1,58 0a29,29 0,1 1,-58 0" />
+    <!-- disc body -->
+    <path android:fillColor="#FF140F2E"
+        android:pathData="M54,54m-28,0a28,28 0,1 1,56 0a28,28 0,1 1,-56 0" />
+    <!-- rim -->
+    <path android:fillColor="#00000000" android:strokeColor="#FF00F0FF" android:strokeWidth="2.5"
+        android:pathData="M54,54m-28,0a28,28 0,1 1,56 0a28,28 0,1 1,-56 0" />
+    <!-- grooves -->
+    <path android:fillColor="#00000000" android:strokeColor="#5500F0FF" android:strokeWidth="1"
+        android:pathData="M54,54m-22,0a22,22 0,1 1,44 0a22,22 0,1 1,-44 0" />
+    <path android:fillColor="#00000000" android:strokeColor="#55FF2BD6" android:strokeWidth="1"
+        android:pathData="M54,54m-17,0a17,17 0,1 1,34 0a17,17 0,1 1,-34 0" />
+    <!-- shine arc -->
+    <path android:fillColor="#00000000" android:strokeColor="#AAFFFFFF" android:strokeWidth="2"
+        android:strokeLineCap="round" android:pathData="M36,40 A22,22 0,0 1,52 32" />
+    <!-- label -->
+    <path android:fillColor="#FFFF2BD6"
+        android:pathData="M54,54m-8,0a8,8 0,1 1,16 0a8,8 0,1 1,-16 0" />
+    <!-- spindle hole -->
+    <path android:fillColor="#FF0B0820"
+        android:pathData="M54,54m-2.2,0a2.2,2.2 0,1 1,4.4 0a2.2,2.2 0,1 1,-4.4 0" />
+    <!-- pulse line across the disc -->
+    <path android:fillColor="#00000000" android:strokeColor="#FFFFFFFF" android:strokeWidth="2.6"
+        android:strokeLineCap="round" android:strokeLineJoin="round"
+        android:pathData="M27,62 L40,62 L44,54 L49,71 L55,57 L59,62 L81,62" />
+</vector>
