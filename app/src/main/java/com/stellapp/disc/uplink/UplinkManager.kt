@@ -133,10 +133,34 @@ object UplinkManager {
         prefs(context).edit().putString("ytdlp_global", text).apply()
     }
 
+    /** yt-dlp learned --js-runtimes in 2025.11.12. Older copies reject the option outright. */
+    fun supportsJsRuntimes(version: String?): Boolean {
+        if (version == null || version.contains("nightly", ignoreCase = true)) return version != null
+        val parts = Regex("""(\d{4})\.(\d{1,2})\.(\d{1,2})""").find(version)?.groupValues ?: return false
+        val y = parts[1].toInt()
+        val m = parts[2].toInt()
+        val d = parts[3].toInt()
+        return y > 2025 || (y == 2025 && (m > 11 || (m == 11 && d >= 12)))
+    }
+
+    @Volatile private var autoUpdated = false
+
+    /** The bundled yt-dlp is often older than the runtime support: update it once, automatically. */
+    private suspend fun ensureModernYtDlp(context: Context) {
+        if (autoUpdated || jsRuntimePath(context) == null || supportsJsRuntimes(_version.value)) return
+        autoUpdated = true
+        try {
+            val app = context.applicationContext
+            YoutubeDL.getInstance().updateYoutubeDL(app)
+            _version.value = YoutubeDL.getInstance().version(app)
+        } catch (_: Exception) {
+        }
+    }
+
     /** Sign-in, JavaScript runtime and always-on options, for every request. */
     private fun applyEngine(context: Context, request: YoutubeDLRequest) {
         if (hasCookies(context)) request.addOption("--cookies", cookiesFile(context).absolutePath)
-        jsRuntimePath(context)?.let { qjs ->
+        jsRuntimePath(context)?.takeIf { supportsJsRuntimes(_version.value) }?.let { qjs ->
             request.addOption("--js-runtimes", "quickjs:$qjs")
             // The challenge-solver scripts come from yt-dlp's own GitHub (cached after the first use).
             request.addOption("--remote-components", "ejs:github")
@@ -199,6 +223,7 @@ object UplinkManager {
      */
     suspend fun resolveStream(context: Context, url: String, video: Boolean): Result<StreamInfo> = withContext(Dispatchers.IO) {
         if (!ensureInit(context)) return@withContext Result.failure(IllegalStateException("The downloader couldn't start on this device."))
+        ensureModernYtDlp(context)
         try {
             val request = YoutubeDLRequest(url.trim())
             applyEngine(context, request)
@@ -254,6 +279,8 @@ object UplinkManager {
             deleteRecursively()
             mkdirs()
         }
+        update(id) { it.copy(message = "Checking yt-dlp is up to date…") }
+        ensureModernYtDlp(context)
         val request = YoutubeDLRequest(o.url.trim())
         applyEngine(context, request)
         buildArgs(o, dir).forEach { (key, value) ->
