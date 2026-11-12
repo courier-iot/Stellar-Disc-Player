@@ -111,6 +111,7 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     var sharePlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
     var showShare by rememberSaveable { mutableStateOf(false) }
     var showSearch by rememberSaveable { mutableStateOf(false) }
+    var showYtSignIn by rememberSaveable { mutableStateOf(false) }
     var homeGroup by remember { mutableStateOf<SongGroup?>(null) }
     var showGroup by rememberSaveable { mutableStateOf(false) }
     val modernHome by vm.modernHome.collectAsStateWithLifecycle()
@@ -273,7 +274,12 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
                 onOpenEqualizer = { showEq = true },
                 onOpenCredits = { showCredits = true },
                 onUpdateFound = { update = it },
+                onOpenYtSignIn = { showYtSignIn = true },
             )
+        }
+
+        Overlay(showYtSignIn) {
+            YouTubeSignInScreen(vm = vm, onClose = { showYtSignIn = false })
         }
 
         Overlay(showEq) {

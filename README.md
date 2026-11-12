@@ -2,7 +2,7 @@
 
 A cyberpunk / deep-space music player for Android. It plays the music files stored on your phone.
 
-## Features (v2.1.0)
+## Features (v2.2.0)
 
 - **Modern home:** a top bar with the "under the hood" toggle on the left, the logo in the middle, and search and settings on the right. Below that:
   - **Regular picks:** a big hero card plus a double row of picks, learned from what you finish, skip and play at each time of day.
@@ -10,7 +10,9 @@ A cyberpunk / deep-space music player for Android. It plays the music files stor
   - **Generated mixes:** Late night rotation, Morning starters, On repeat, Most listened to, Least listened to, Forgotten in time, Never played, Second chances, Fresh arrivals, genre mixes and an artist deep dive. Mixes can be saved as playlists.
 - **Under the hood:** the original library view, one tap away (and back).
 - **Search** across songs, artists, albums, playlists and phone videos.
-- **YouTube sign-in:** import a cookies.txt from your own account in Settings so Uplink gets past "confirm you're not a bot".
+- **YouTube sign-in:** sign in right inside the app (Settings → Uplink engine), or import a cookies.txt as a backup, so Uplink gets past "confirm you're not a bot".
+- **Built-in JavaScript runtime:** the build compiles QuickJS-NG into the APK, so yt-dlp can solve YouTube's checks on the phone. Settings shows whether it's included.
+- **Nightly yt-dlp** updates (optional) and **always-on yt-dlp options** applied to every download.
 - **Audio-only videos:** play videos as sound only to save battery (toggle in Now Playing or Settings).
 - **Library:** Songs, Albums and Artists tabs, search across title/artist/album, sort by A–Z, Newest or Artist, Play all and Shuffle all.
 - **Now Playing:** album art inside spinning neon orbit rings with a moon, a synthwave horizon with a scrolling neon grid and a rising planet, animated spectrum bars, a seek bar, shuffle, and repeat (off / all / one).
@@ -105,6 +107,11 @@ Keep `stellardisc.jks` backed up somewhere safe and **never** commit it. If you 
 Change `appVersion` near the top of `app/build.gradle.kts` (format `vLARGE.MEDIUM.SMALL`). The version code is calculated from it, so Android always sees the new build as newer.
 
 ## Changelog
+
+### v2.2.0
+**Added:** in-app YouTube sign-in that turns your sign-in into cookies for yt-dlp automatically, the QuickJS-NG JavaScript runtime built into the APK (compiled by the GitHub workflow) and passed to yt-dlp together with its challenge-solver scripts, an optional nightly yt-dlp update channel, always-on yt-dlp options, and a runtime status line in Settings.
+**Removed:** none
+**Changed:** the Settings section is renamed from YouTube sign-in to Uplink engine. Signing out now also clears the in-app browser's cookies. The build workflow gains a QuickJS step, and if that step fails the app still builds without the runtime.
 
 ### v2.1.0
 **Added:** the modern home screen (Regular picks hero and double row, playlists, pinned playlists, pinned songs, generated mixes), an on-device taste engine that learns from finished, partial and skipped listens and the time of day, pin and unpin for songs and playlists, "save mix as playlist", a search screen, genre mixes (Android 11+), YouTube sign-in with a cookies.txt file, and audio-only video playback.

@@ -414,8 +414,41 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun clearYtCookies() {
         UplinkManager.clearCookies(ctx)
+        try {
+            android.webkit.CookieManager.getInstance().removeAllCookies(null)
+        } catch (_: Exception) {
+        }
         _ytSignedIn.value = false
-        post("YouTube sign-in removed")
+        post("Signed out of YouTube")
+    }
+
+    /** From the in-app sign-in screen: the browser's YouTube cookies. */
+    fun saveYtSignIn(rawCookies: String) {
+        if (rawCookies.isBlank()) {
+            post("No YouTube sign-in found")
+            return
+        }
+        UplinkManager.saveCookies(ctx, com.stellapp.disc.ui.toNetscapeCookies(rawCookies))
+        _ytSignedIn.value = true
+        post("Signed in. Uplink will use your YouTube account.")
+    }
+
+    // ----- yt-dlp engine -----
+    val hasJsRuntime: Boolean get() = UplinkManager.jsRuntimePath(ctx) != null
+
+    private val _nightly = MutableStateFlow(UplinkManager.useNightly(app))
+    val nightly: StateFlow<Boolean> = _nightly.asStateFlow()
+
+    fun setNightly(on: Boolean) {
+        UplinkManager.setNightly(ctx, on)
+        _nightly.value = on
+    }
+
+    fun ytdlpGlobalOptions(): String = UplinkManager.globalOptions(ctx)
+
+    fun setYtdlpGlobalOptions(text: String) {
+        UplinkManager.setGlobalOptions(ctx, text.trim())
+        post("Saved. These options now apply to every download.")
     }
 
     fun setVideoFullscreen(on: Boolean) {

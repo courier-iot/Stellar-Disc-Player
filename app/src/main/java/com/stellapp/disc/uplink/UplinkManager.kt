@@ -105,6 +105,45 @@ object UplinkManager {
         cookiesFile(context).delete()
     }
 
+    /** Saves cookies captured by the in-app sign-in screen. */
+    fun saveCookies(context: Context, netscapeText: String) {
+        cookiesFile(context).writeText(netscapeText)
+    }
+
+    // ---------- engine options ----------
+
+    private fun prefs(context: Context) = context.applicationContext.getSharedPreferences("stellar_disc", Context.MODE_PRIVATE)
+
+    /** The bundled QuickJS-NG runtime, if this build includes it. */
+    fun jsRuntimePath(context: Context): String? {
+        val dir = context.applicationContext.applicationInfo.nativeLibraryDir ?: return null
+        return File(dir, "libqjs.so").takeIf { it.exists() }?.absolutePath
+    }
+
+    fun useNightly(context: Context): Boolean = prefs(context).getBoolean("ytdlp_nightly", false)
+
+    fun setNightly(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean("ytdlp_nightly", on).apply()
+    }
+
+    /** Options added to every yt-dlp run, set in Settings. */
+    fun globalOptions(context: Context): String = prefs(context).getString("ytdlp_global", "") ?: ""
+
+    fun setGlobalOptions(context: Context, text: String) {
+        prefs(context).edit().putString("ytdlp_global", text).apply()
+    }
+
+    /** Sign-in, JavaScript runtime and always-on options, for every request. */
+    private fun applyEngine(context: Context, request: YoutubeDLRequest) {
+        if (hasCookies(context)) request.addOption("--cookies", cookiesFile(context).absolutePath)
+        jsRuntimePath(context)?.let { qjs ->
+            request.addOption("--js-runtimes", "quickjs:$qjs")
+            // The challenge-solver scripts come from yt-dlp's own GitHub (cached after the first use).
+            request.addOption("--remote-components", "ejs:github")
+        }
+        parseExtra(globalOptions(context)).forEach { (k, v) -> if (v == null) request.addOption(k) else request.addOption(k, v) }
+    }
+
     /** Lets other features (like Swap) tell the library that new files arrived. */
     fun announce(batch: FinishedBatch) {
         _finished.tryEmit(batch)
@@ -135,10 +174,20 @@ object UplinkManager {
         if (!ensureInit(context)) return@withContext "The downloader couldn't start on this device."
         try {
             val app = context.applicationContext
-            val result = YoutubeDL.getInstance().updateYoutubeDL(app)?.toString() ?: ""
-            _version.value = YoutubeDL.getInstance().version(app)
-            if (result.contains("ALREADY", ignoreCase = true)) "Already up to date (${_version.value})"
-            else "Updated to ${_version.value}"
+            if (useNightly(app)) {
+                // yt-dlp updates itself to the newest nightly build.
+                val request = YoutubeDLRequest(emptyList<String>())
+                request.addOption("--update-to", "nightly")
+                val out = YoutubeDL.getInstance().execute(request).out
+                val line = out.lineSequence().lastOrNull { it.isNotBlank() }?.trim() ?: "Done"
+                _version.value = "nightly"
+                "Nightly: $line"
+            } else {
+                val result = YoutubeDL.getInstance().updateYoutubeDL(app)?.toString() ?: ""
+                _version.value = YoutubeDL.getInstance().version(app)
+                if (result.contains("ALREADY", ignoreCase = true)) "Already up to date (${_version.value})"
+                else "Updated to ${_version.value}"
+            }
         } catch (e: Exception) {
             "Update failed: ${e.message?.lineSequence()?.firstOrNull()?.take(120) ?: "unknown error"}"
         }
@@ -152,7 +201,7 @@ object UplinkManager {
         if (!ensureInit(context)) return@withContext Result.failure(IllegalStateException("The downloader couldn't start on this device."))
         try {
             val request = YoutubeDLRequest(url.trim())
-            if (hasCookies(context)) request.addOption("--cookies", cookiesFile(context).absolutePath)
+            applyEngine(context, request)
             request.addOption("--dump-json")
             request.addOption("--no-playlist")
             request.addOption(
@@ -206,7 +255,7 @@ object UplinkManager {
             mkdirs()
         }
         val request = YoutubeDLRequest(o.url.trim())
-        if (hasCookies(context)) request.addOption("--cookies", cookiesFile(context).absolutePath)
+        applyEngine(context, request)
         buildArgs(o, dir).forEach { (key, value) ->
             if (value == null) request.addOption(key) else request.addOption(key, value)
         }

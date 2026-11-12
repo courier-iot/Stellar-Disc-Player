@@ -78,6 +78,7 @@ fun SettingsScreen(
     onOpenEqualizer: () -> Unit,
     onOpenCredits: () -> Unit,
     onUpdateFound: (com.stellapp.disc.UpdateInfo) -> Unit,
+    onOpenYtSignIn: () -> Unit,
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -91,6 +92,8 @@ fun SettingsScreen(
     val ytSignedIn by vm.ytSignedIn.collectAsStateWithLifecycle()
     val audioOnly by vm.audioOnly.collectAsStateWithLifecycle()
     val modernHome by vm.modernHome.collectAsStateWithLifecycle()
+    val nightly by vm.nightly.collectAsStateWithLifecycle()
+    var globalOpts by remember { mutableStateOf(vm.ytdlpGlobalOptions()) }
     val cookiePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { vm.importYtCookies(it) }
     }
@@ -197,35 +200,46 @@ fun SettingsScreen(
                     ) { vm.setAudioOnly(it) }
                 }
 
-                Section("YOUTUBE SIGN-IN") {
+                Section("UPLINK ENGINE") {
                     Text(
-                        if (ytSignedIn) "✓ Signed in with your cookies file. Uplink and streaming use it for YouTube."
-                        else "Not set up. Use this if YouTube asks you to \"sign in to confirm you're not a bot\".",
-                        color = if (ytSignedIn) primary else TextHi,
-                        fontSize = 14.sp,
+                        if (vm.hasJsRuntime) "✓ JavaScript runtime: QuickJS-NG built in. yt-dlp can solve YouTube's checks."
+                        else "⚠ No JavaScript runtime in this build, so YouTube may fail or offer fewer formats.",
+                        color = if (vm.hasJsRuntime) primary else DangerRed,
+                        fontSize = 13.sp,
                     )
-                    Spacer(Modifier.height(8.dp))
+                    Spacer(Modifier.height(14.dp))
+                    Text("YouTube sign-in", color = TextHi, fontSize = 14.sp)
                     Text(
-                        "1. On a computer, sign in to youtube.com in your browser.\n" +
-                            "2. Install a cookie exporter such as \"Get cookies.txt LOCALLY\".\n" +
-                            "3. On youtube.com, export cookies.txt and copy it to your phone.\n" +
-                            "4. Tap Import below and pick the file.",
-                        color = TextLo,
+                        if (ytSignedIn) "✓ Signed in. Uplink and streaming use your account for YouTube."
+                        else "Use this if YouTube says \"sign in to confirm you're not a bot\".",
+                        color = if (ytSignedIn) primary else TextLo,
                         fontSize = 12.sp,
                     )
-                    Spacer(Modifier.height(10.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        NeonChip(if (ytSignedIn) "REPLACE COOKIES.TXT" else "IMPORT COOKIES.TXT", false) {
-                            cookiePicker.launch(arrayOf("text/plain", "*/*"))
-                        }
+                    Spacer(Modifier.height(8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        NeonChip(if (ytSignedIn) "SIGN IN AGAIN" else "SIGN IN TO YOUTUBE", !ytSignedIn, onOpenYtSignIn)
+                        NeonChip("IMPORT COOKIES.TXT", false) { cookiePicker.launch(arrayOf("text/plain", "*/*")) }
                         if (ytSignedIn) NeonChip("SIGN OUT", false) { vm.clearYtCookies() }
                     }
                     Text(
-                        "The file works like a password for your Google account: it's stored privately inside the app and never shared. Consider a spare account, since Google can flag accounts that download a lot. Delete the original file from your Downloads after importing.",
+                        "Only your YouTube cookies are kept, privately inside the app. They work like a password, so consider a spare account: Google can flag accounts that download a lot. Import cookies.txt is the backup if Google won't allow sign-in inside apps.",
                         color = TextLo,
                         fontSize = 11.sp,
-                        modifier = Modifier.padding(top = 10.dp),
+                        modifier = Modifier.padding(top = 8.dp),
                     )
+                    Spacer(Modifier.height(12.dp))
+                    ToggleRow(
+                        "Nightly yt-dlp updates",
+                        "Gets fixes for YouTube days earlier. Applies next time you tap Update yt-dlp in Credits & Support.",
+                        nightly,
+                    ) { vm.setNightly(it) }
+                    Spacer(Modifier.height(8.dp))
+                    Text("Always-on yt-dlp options", color = TextHi, fontSize = 14.sp)
+                    Text("Added to every download and stream, e.g. --embed-chapters", color = TextLo, fontSize = 12.sp)
+                    Spacer(Modifier.height(6.dp))
+                    NeonTextField(globalOpts, { globalOpts = it }, placeholder = "--option value …", singleLine = false)
+                    Spacer(Modifier.height(6.dp))
+                    NeonChip("SAVE OPTIONS", false) { vm.setYtdlpGlobalOptions(globalOpts) }
                 }
 
                 Section("LYRICS") {
