@@ -84,21 +84,33 @@ import kotlin.math.roundToInt
 /**
  * Only one video view may show the picture at a time. Two live views (Now Playing underneath
  * fullscreen) fight over the same video after a rotation and leave a frozen frame poking
- * through. The newest view on screen owns the picture; the others let go and hide.
+ * through. The view with the highest [priority] owns the picture (fullscreen beats the
+ * Now Playing preview even when rotating rebuilds the preview); ties go to the newest.
+ * The others let go and hide.
  */
 private object VideoSurfaces {
-    val stack = mutableStateListOf<Any>()
+    class Entry(val priority: Int)
+    val stack = mutableStateListOf<Entry>()
+
+    fun owner(): Entry? {
+        var best: Entry? = null
+        for (e in stack) if (best == null || e.priority >= best.priority) best = e
+        return best
+    }
 }
+
+/** Fullscreen video. Always takes the picture over the Now Playing preview. */
+const val VIDEO_PRIORITY_FULLSCREEN = 10
 
 /** The video picture for [player]. Subtitles are drawn on top automatically. */
 @Composable
-fun VideoSurface(player: Player?, modifier: Modifier = Modifier, zoom: Boolean = false) {
-    val me = remember { Any() }
+fun VideoSurface(player: Player?, modifier: Modifier = Modifier, zoom: Boolean = false, priority: Int = 0) {
+    val me = remember(priority) { VideoSurfaces.Entry(priority) }
     DisposableEffect(me) {
         VideoSurfaces.stack.add(me)
         onDispose { VideoSurfaces.stack.remove(me) }
     }
-    val active = VideoSurfaces.stack.lastOrNull() === me
+    val active = VideoSurfaces.owner() === me
     AndroidView(
         factory = { ctx ->
             PlayerView(ctx).apply {
@@ -108,13 +120,15 @@ fun VideoSurface(player: Player?, modifier: Modifier = Modifier, zoom: Boolean =
             }
         },
         update = { view ->
+            // Show the view before handing it the player, so its surface exists to draw on.
+            // Hiding a view also drops its surface, so nothing stale is left behind.
+            if (active) view.visibility = android.view.View.VISIBLE
             val want = if (active) player else null
             if (view.player !== want) {
                 view.player = null
                 view.player = want
             }
-            // Hiding the view also drops its surface, so nothing stale is left behind.
-            view.visibility = if (active) android.view.View.VISIBLE else android.view.View.INVISIBLE
+            if (!active) view.visibility = android.view.View.INVISIBLE
             view.resizeMode = if (zoom) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
         },
         onRelease = { view -> view.player = null },
@@ -244,7 +258,7 @@ fun VideoPlayerScreen(vm: PlayerViewModel, inPip: Boolean, onClose: () -> Unit, 
                 )
             }
     ) {
-        VideoSurface(player, Modifier.fillMaxSize(), zoom)
+        VideoSurface(player, Modifier.fillMaxSize(), zoom, priority = VIDEO_PRIORITY_FULLSCREEN)
 
         if (!inPip) {
             label?.let {

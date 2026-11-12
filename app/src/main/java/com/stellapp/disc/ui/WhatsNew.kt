@@ -3,6 +3,10 @@ package com.stellapp.disc.ui
 /** Shown once after each update. Keep the newest version first. */
 object WhatsNew {
     val notes: Map<String, String> = linkedMapOf(
+        "3.0.1" to """
+            CHANGED
+            • Fixed: fullscreen video went black after rotating the phone
+        """.trimIndent(),
         "3.0.0" to """
             ADDED
             • ♥ and shuffle buttons on the media notification and lock screen
