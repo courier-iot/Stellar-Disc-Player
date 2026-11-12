@@ -11,6 +11,8 @@ import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.session.MediaSession
 import androidx.media3.session.MediaSessionService
+import com.stellapp.disc.data.ListenKind
+import com.stellapp.disc.data.TasteStore
 import com.stellapp.disc.playback.AudioFx
 import com.stellapp.disc.playback.PlaybackExtras
 import com.stellapp.disc.playback.QueueStore
@@ -34,6 +36,29 @@ class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var errorStreak = 0
+
+    // Listening tracker for the taste engine.
+    private var tId = -1L
+    private var tListened = 0L
+    private var tDuration = 0L
+    private var tLastTick = 0L
+
+    /** Called when a track stops being the current one. */
+    private fun finishListen(natural: Boolean) {
+        val id = tId
+        val listened = tListened
+        val dur = tDuration
+        tId = -1
+        tListened = 0
+        if (id < 0 || (listened < 3_000 && !natural)) return
+        val frac = if (dur > 0) listened.toFloat() / dur else 0f
+        val kind = when {
+            natural || frac >= 0.8f -> ListenKind.COMPLETE
+            listened < 30_000 || frac < 0.3f -> ListenKind.SKIP
+            else -> ListenKind.PARTIAL
+        }
+        TasteStore.record(id, kind, listened)
+    }
 
     override fun onCreate() {
         super.onCreate()
@@ -62,7 +87,14 @@ class PlaybackService : MediaSessionService() {
         AudioFx.attach(player.audioSessionId)
         PlaybackExtras.attach(player)
 
+        tId = player.currentMediaItem?.mediaId?.toLongOrNull() ?: -1
         player.addListener(object : Player.Listener {
+            override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                finishListen(natural = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT)
+                tId = mediaItem?.mediaId?.toLongOrNull() ?: -1
+                tDuration = 0
+            }
+
             override fun onAudioSessionIdChanged(audioSessionId: Int) {
                 AudioFx.attach(audioSessionId)
             }
@@ -100,6 +132,18 @@ class PlaybackService : MediaSessionService() {
                 if (player.isPlaying) QueueStore.savePosition(this@PlaybackService, player)
             }
         }
+        scope.launch {
+            tLastTick = android.os.SystemClock.elapsedRealtime()
+            while (isActive) {
+                delay(1_000)
+                val now = android.os.SystemClock.elapsedRealtime()
+                if (player.isPlaying) {
+                    tListened += now - tLastTick
+                    player.duration.takeIf { it > 0 }?.let { tDuration = it }
+                }
+                tLastTick = now
+            }
+        }
     }
 
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
@@ -113,6 +157,7 @@ class PlaybackService : MediaSessionService() {
     }
 
     override fun onDestroy() {
+        finishListen(natural = false)
         session?.player?.let { QueueStore.savePosition(this, it) }
         scope.cancel()
         PlaybackExtras.detach()

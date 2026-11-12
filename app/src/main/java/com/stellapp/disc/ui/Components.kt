@@ -13,6 +13,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -256,6 +257,7 @@ fun NeonTextField(
     singleLine: Boolean = true,
     leading: (@Composable () -> Unit)? = null,
     trailing: (@Composable () -> Unit)? = null,
+    focusRequester: androidx.compose.ui.focus.FocusRequester? = null,
 ) {
     val primary = MaterialTheme.colorScheme.primary
     Row(
@@ -279,7 +281,9 @@ fun NeonTextField(
                 singleLine = singleLine,
                 textStyle = TextStyle(color = TextHi, fontFamily = Mono, fontSize = 14.sp),
                 cursorBrush = SolidColor(primary),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (focusRequester != null) Modifier.focusRequester(focusRequester) else Modifier),
             )
         }
         if (trailing != null) {

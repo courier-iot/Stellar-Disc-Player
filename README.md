@@ -2,8 +2,16 @@
 
 A cyberpunk / deep-space music player for Android. It plays the music files stored on your phone.
 
-## Features (v2.0.0)
+## Features (v2.1.0)
 
+- **Modern home:** a top bar with the "under the hood" toggle on the left, the logo in the middle, and search and settings on the right. Below that:
+  - **Regular picks:** a big hero card plus a double row of picks, learned from what you finish, skip and play at each time of day.
+  - **Your playlists**, then **pinned playlists** and **pinned songs** (long-press a song or open a playlist to pin it).
+  - **Generated mixes:** Late night rotation, Morning starters, On repeat, Most listened to, Least listened to, Forgotten in time, Never played, Second chances, Fresh arrivals, genre mixes and an artist deep dive. Mixes can be saved as playlists.
+- **Under the hood:** the original library view, one tap away (and back).
+- **Search** across songs, artists, albums, playlists and phone videos.
+- **YouTube sign-in:** import a cookies.txt from your own account in Settings so Uplink gets past "confirm you're not a bot".
+- **Audio-only videos:** play videos as sound only to save battery (toggle in Now Playing or Settings).
 - **Library:** Songs, Albums and Artists tabs, search across title/artist/album, sort by A–Z, Newest or Artist, Play all and Shuffle all.
 - **Now Playing:** album art inside spinning neon orbit rings with a moon, a synthwave horizon with a scrolling neon grid and a rising planet, animated spectrum bars, a seek bar, shuffle, and repeat (off / all / one).
 - **Queue:** a sheet showing the real play order (follows shuffle). Tap any track to jump to it.
@@ -97,6 +105,11 @@ Keep `stellardisc.jks` backed up somewhere safe and **never** commit it. If you 
 Change `appVersion` near the top of `app/build.gradle.kts` (format `vLARGE.MEDIUM.SMALL`). The version code is calculated from it, so Android always sees the new build as newer.
 
 ## Changelog
+
+### v2.1.0
+**Added:** the modern home screen (Regular picks hero and double row, playlists, pinned playlists, pinned songs, generated mixes), an on-device taste engine that learns from finished, partial and skipped listens and the time of day, pin and unpin for songs and playlists, "save mix as playlist", a search screen, genre mixes (Android 11+), YouTube sign-in with a cookies.txt file, and audio-only video playback.
+**Removed:** none
+**Changed:** the original library is now the "under the hood" view, with a toggle to switch. The long-press menu adds Pin to home, and playlist pages add a pin button. Settings gains Video and YouTube sign-in sections plus a Modern home switch.
 
 ### v2.0.0
 **Added:** a fullscreen video player (gestures, auto-rotate, subtitles toggle, fit/fill, picture-in-picture), a Videos tab for every phone video, streaming without downloading (plus save-from-stream), subtitle embedding for video downloads, resume after closing or rebooting, a sleep timer, playback speed, smooth fades between tracks, a reorderable queue, an equalizer with bass boost, an optional real visualizer, lyrics (from MP3 files, paste, .lrc import, lrclib.net, synced scrolling and tap-to-seek), a tag and cover editor, a Folders tab with hide, delete from phone, smart lists (recently played, most played, recently added), backup and restore, M3U import and export, a home screen widget, a first-run tour, an update checker, a crash log with GitHub reporting, a full Settings screen, and HLS/DASH stream support.

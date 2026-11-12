@@ -34,7 +34,8 @@ object MusicRepository {
         } else {
             MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
         }
-        val projection = arrayOf(
+        val hasGenre = Build.VERSION.SDK_INT >= Build.VERSION_CODES.R
+        val projection = listOfNotNull(
             MediaStore.Audio.Media._ID,
             MediaStore.Audio.Media.TITLE,
             MediaStore.Audio.Media.ARTIST,
@@ -45,7 +46,8 @@ object MusicRepository {
             MediaStore.Audio.Media.DATE_ADDED,
             MediaStore.Audio.Media.SIZE,
             MediaStore.Audio.Media.DATA,
-        )
+            if (hasGenre) MediaStore.Audio.Media.GENRE else null,
+        ).toTypedArray()
         val selection = "${MediaStore.Audio.Media.IS_MUSIC} != 0"
         val out = ArrayList<Song>()
         val appFolder = "/${AppInfo.FOLDER}/"
@@ -61,6 +63,7 @@ object MusicRepository {
             val addedCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
             val sizeCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
             val dataCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
+            val genreCol = if (hasGenre) c.getColumnIndex(MediaStore.Audio.Media.GENRE) else -1
 
             while (c.moveToNext()) {
                 val duration = c.getLong(durCol)
@@ -80,6 +83,7 @@ object MusicRepository {
                     size = c.getLong(sizeCol),
                     path = path,
                     inAppFolder = path.contains(appFolder),
+                    genre = if (genreCol >= 0) (c.getString(genreCol) ?: "").trim() else "",
                 )
             }
         }

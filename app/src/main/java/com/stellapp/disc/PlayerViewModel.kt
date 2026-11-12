@@ -21,7 +21,10 @@ import com.stellapp.disc.data.MetaOverride
 import com.stellapp.disc.data.MetaStore
 import com.stellapp.disc.data.MusicRepository
 import com.stellapp.disc.data.PlayStat
+import com.stellapp.disc.data.PinStore
 import com.stellapp.disc.data.PlayStats
+import com.stellapp.disc.data.Taste
+import com.stellapp.disc.data.TasteStore
 import com.stellapp.disc.data.Playlist
 import com.stellapp.disc.data.PlaylistStore
 import com.stellapp.disc.data.Song
@@ -101,6 +104,20 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     val playlists: StateFlow<List<Playlist>> = PlaylistStore.playlists
     val stats: StateFlow<Map<Long, PlayStat>> = PlayStats.stats
+    val tastes: StateFlow<Map<Long, Taste>> = TasteStore.tastes
+    val pinnedSongs: StateFlow<List<Long>> = PinStore.songs
+    val pinnedPlaylists: StateFlow<List<String>> = PinStore.playlists
+
+    private val _modernHome = MutableStateFlow(prefs.getBoolean(KEY_MODERN_HOME, true))
+    /** true = the new home overview, false = the "under the hood" library view. */
+    val modernHome: StateFlow<Boolean> = _modernHome.asStateFlow()
+
+    private val _audioOnly = MutableStateFlow(prefs.getBoolean(KEY_AUDIO_ONLY, false))
+    /** Play videos without the picture (saves battery). */
+    val audioOnly: StateFlow<Boolean> = _audioOnly.asStateFlow()
+
+    private val _ytSignedIn = MutableStateFlow(UplinkManager.hasCookies(app))
+    val ytSignedIn: StateFlow<Boolean> = _ytSignedIn.asStateFlow()
 
     // ---------- player ----------
     private val _state = MutableStateFlow(PlayerState())
@@ -165,6 +182,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             }
             controller = c
             _player.value = c
+            applyAudioOnly(c)
             c.addListener(object : Player.Listener {
                 override fun onEvents(player: Player, events: Player.Events) {
                     if (events.contains(Player.EVENT_MEDIA_ITEM_TRANSITION) && player.playWhenReady) {
@@ -364,6 +382,40 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, !on)
             .build()
         _state.update { it.copy(subtitlesOn = on) }
+    }
+
+    fun setAudioOnly(on: Boolean) {
+        _audioOnly.value = on
+        prefs.edit().putBoolean(KEY_AUDIO_ONLY, on).apply()
+        controller?.let { applyAudioOnly(it) }
+    }
+
+    private fun applyAudioOnly(c: MediaController) {
+        c.trackSelectionParameters = c.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, _audioOnly.value)
+            .build()
+    }
+
+    fun setModernHome(on: Boolean) {
+        _modernHome.value = on
+        prefs.edit().putBoolean(KEY_MODERN_HOME, on).apply()
+    }
+
+    fun togglePinSong(id: Long) = PinStore.toggleSong(id)
+    fun togglePinPlaylist(id: String) = PinStore.togglePlaylist(id)
+
+    fun importYtCookies(uri: Uri) {
+        viewModelScope.launch {
+            val error = UplinkManager.importCookies(ctx, uri)
+            _ytSignedIn.value = UplinkManager.hasCookies(ctx)
+            post(error ?: "YouTube sign-in saved. Uplink will use it.")
+        }
+    }
+
+    fun clearYtCookies() {
+        UplinkManager.clearCookies(ctx)
+        _ytSignedIn.value = false
+        post("YouTube sign-in removed")
     }
 
     fun setVideoFullscreen(on: Boolean) {
@@ -769,6 +821,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         const val KEY_ANIMATE = "animate_bg"
         const val KEY_LYRICS_AUTO = "lyrics_auto"
         const val KEY_ONBOARDED = "onboarded"
+        const val KEY_MODERN_HOME = "modern_home"
+        const val KEY_AUDIO_ONLY = "audio_only"
         const val KEY_HIDDEN = "hidden_folders"
         const val KEY_DL_FORMAT = "dl_format"
         const val KEY_DL_KBPS = "dl_kbps"

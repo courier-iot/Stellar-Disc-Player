@@ -117,6 +117,7 @@ fun NowPlayingScreen(
     val player by vm.player.collectAsStateWithLifecycle()
     val sleepAt by PlaybackExtras.sleepEndsAt.collectAsStateWithLifecycle()
     val sleepEnd by PlaybackExtras.sleepEndOfTrack.collectAsStateWithLifecycle()
+    val audioOnly by vm.audioOnly.collectAsStateWithLifecycle()
     val song = s.current
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
@@ -186,7 +187,7 @@ fun NowPlayingScreen(
             Spacer(Modifier.weight(1f))
             when {
                 song != null && showLyrics -> LyricsPanel(vm, song, s.positionMs, Modifier.fillMaxWidth().aspectRatio(0.9f))
-                song?.isVideo == true -> Box(
+                song?.isVideo == true && !audioOnly -> Box(
                     Modifier
                         .fillMaxWidth()
                         .aspectRatio(16f / 9f)
@@ -242,7 +243,8 @@ fun NowPlayingScreen(
                 NeonChip("LYRICS", showLyrics) { showLyrics = !showLyrics }
                 NeonChip(sleepLabel, sleepAt != null || sleepEnd) { sheet = NpSheet.SLEEP }
                 NeonChip("${s.speed}×", s.speed != 1f) { sheet = NpSheet.SPEED }
-                if (song?.isVideo == true) NeonChip("⤢ FULLSCREEN", false, onOpenVideo)
+                if (song?.isVideo == true) NeonChip("♪ AUDIO ONLY", audioOnly) { vm.setAudioOnly(!audioOnly) }
+                if (song?.isVideo == true && !audioOnly) NeonChip("⤢ FULLSCREEN", false, onOpenVideo)
                 if (song?.isStream == true) NeonChip("⇣ SAVE", false) { vm.saveStream(song) }
             }
 

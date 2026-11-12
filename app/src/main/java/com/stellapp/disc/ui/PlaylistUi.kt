@@ -32,6 +32,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.stellapp.disc.PlayerViewModel
 import com.stellapp.disc.data.Playlist
 import com.stellapp.disc.data.Song
@@ -121,6 +122,7 @@ fun SongActionSheet(
 ) {
     var creating by remember { mutableStateOf(false) }
     val primary = MaterialTheme.colorScheme.primary
+    val pinned by vm.pinnedSongs.collectAsStateWithLifecycle()
 
     ModalBottomSheet(onDismissRequest = onDismiss, containerColor = PanelSolid, contentColor = TextHi) {
         Column(
@@ -139,6 +141,12 @@ fun SongActionSheet(
             }
             SheetAction("Play next") { vm.playNext(song); onDismiss() }
             SheetAction("Add to queue") { vm.enqueueSongs(listOf(song.id)); onDismiss() }
+            if (!song.isStream) {
+                SheetAction(if (song.id in pinned) "Unpin from home" else "Pin to home") {
+                    vm.togglePinSong(song.id)
+                    onDismiss()
+                }
+            }
             if (inPlaylistId != null) {
                 SheetAction("Remove from this playlist", color = DangerRed) {
                     vm.removeFromPlaylist(inPlaylistId, song.id)

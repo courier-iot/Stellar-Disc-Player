@@ -28,6 +28,8 @@ data class Song(
     val streamPage: String? = null,
     val artUrl: String? = null,
     val streamMime: String? = null,
+    /** Genre tag (Android 11+), used for genre mixes. */
+    val genre: String = "",
 ) {
     /** Key for cover-art caching: per album for music, per file for videos. */
     val artKey: Long get() = if (isVideo) -1000L - id else albumId

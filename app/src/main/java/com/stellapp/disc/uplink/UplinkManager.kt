@@ -79,6 +79,32 @@ object UplinkManager {
         }
     }
 
+    // ---------- YouTube sign-in (cookies.txt) ----------
+
+    fun cookiesFile(context: Context): File = File(context.applicationContext.filesDir, "yt_cookies.txt")
+
+    fun hasCookies(context: Context): Boolean = cookiesFile(context).let { it.exists() && it.length() > 0 }
+
+    /** Copies a Netscape-format cookies.txt in. Returns an error message, or null when it worked. */
+    suspend fun importCookies(context: Context, uri: android.net.Uri): String? = withContext(Dispatchers.IO) {
+        try {
+            val text = context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+                ?: return@withContext "Couldn't read that file"
+            val lines = text.lines().filter { it.isNotBlank() && !it.startsWith("#") }
+            val looksRight = lines.any { it.split("\t").size >= 7 }
+            if (!looksRight) return@withContext "That doesn't look like a cookies.txt file (Netscape format)"
+            if (lines.none { it.contains("youtube.com") }) return@withContext "No YouTube cookies in that file. Export it while signed in to youtube.com"
+            cookiesFile(context).writeText(text)
+            null
+        } catch (e: Exception) {
+            "Couldn't import: ${e.message ?: "unknown error"}"
+        }
+    }
+
+    fun clearCookies(context: Context) {
+        cookiesFile(context).delete()
+    }
+
     /** Lets other features (like Swap) tell the library that new files arrived. */
     fun announce(batch: FinishedBatch) {
         _finished.tryEmit(batch)
@@ -126,6 +152,7 @@ object UplinkManager {
         if (!ensureInit(context)) return@withContext Result.failure(IllegalStateException("The downloader couldn't start on this device."))
         try {
             val request = YoutubeDLRequest(url.trim())
+            if (hasCookies(context)) request.addOption("--cookies", cookiesFile(context).absolutePath)
             request.addOption("--dump-json")
             request.addOption("--no-playlist")
             request.addOption(
@@ -179,6 +206,7 @@ object UplinkManager {
             mkdirs()
         }
         val request = YoutubeDLRequest(o.url.trim())
+        if (hasCookies(context)) request.addOption("--cookies", cookiesFile(context).absolutePath)
         buildArgs(o, dir).forEach { (key, value) ->
             if (value == null) request.addOption(key) else request.addOption(key, value)
         }

@@ -88,6 +88,12 @@ fun SettingsScreen(
     val lyricsAuto by vm.lyricsAuto.collectAsStateWithLifecycle()
     val hidden by vm.hiddenFolders.collectAsStateWithLifecycle()
     var updateMsg by remember { mutableStateOf<String?>(null) }
+    val ytSignedIn by vm.ytSignedIn.collectAsStateWithLifecycle()
+    val audioOnly by vm.audioOnly.collectAsStateWithLifecycle()
+    val modernHome by vm.modernHome.collectAsStateWithLifecycle()
+    val cookiePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        uri?.let { vm.importYtCookies(it) }
+    }
 
     val micPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         if (granted) AudioFx.setVisualizer(true) else vm.post("The real visualizer needs that permission")
@@ -154,6 +160,7 @@ fun SettingsScreen(
                         }
                     }
                     ToggleRow("Animated starfield", "Turn off to save battery", animate) { vm.setAnimateBackground(it) }
+                    ToggleRow("Modern home", "Off shows the \"under the hood\" library view", modernHome) { vm.setModernHome(it) }
                 }
 
                 Section("SOUND") {
@@ -180,6 +187,45 @@ fun SettingsScreen(
                             micPermission.launch(Manifest.permission.RECORD_AUDIO)
                         }
                     }
+                }
+
+                Section("VIDEO") {
+                    ToggleRow(
+                        "Play videos as audio only",
+                        "No picture, just the sound. Saves battery when listening in the background.",
+                        audioOnly,
+                    ) { vm.setAudioOnly(it) }
+                }
+
+                Section("YOUTUBE SIGN-IN") {
+                    Text(
+                        if (ytSignedIn) "✓ Signed in with your cookies file. Uplink and streaming use it for YouTube."
+                        else "Not set up. Use this if YouTube asks you to \"sign in to confirm you're not a bot\".",
+                        color = if (ytSignedIn) primary else TextHi,
+                        fontSize = 14.sp,
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "1. On a computer, sign in to youtube.com in your browser.\n" +
+                            "2. Install a cookie exporter such as \"Get cookies.txt LOCALLY\".\n" +
+                            "3. On youtube.com, export cookies.txt and copy it to your phone.\n" +
+                            "4. Tap Import below and pick the file.",
+                        color = TextLo,
+                        fontSize = 12.sp,
+                    )
+                    Spacer(Modifier.height(10.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        NeonChip(if (ytSignedIn) "REPLACE COOKIES.TXT" else "IMPORT COOKIES.TXT", false) {
+                            cookiePicker.launch(arrayOf("text/plain", "*/*"))
+                        }
+                        if (ytSignedIn) NeonChip("SIGN OUT", false) { vm.clearYtCookies() }
+                    }
+                    Text(
+                        "The file works like a password for your Google account: it's stored privately inside the app and never shared. Consider a spare account, since Google can flag accounts that download a lot. Delete the original file from your Downloads after importing.",
+                        color = TextLo,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(top = 10.dp),
+                    )
                 }
 
                 Section("LYRICS") {

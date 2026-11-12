@@ -42,7 +42,9 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.CloudDownload
+import androidx.compose.material.icons.rounded.Dashboard
 import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.QrCodeScanner
 import androidx.compose.material.icons.rounded.Search
@@ -142,8 +144,10 @@ fun LibraryScreen(
     onOpenSwap: () -> Unit,
     onSharePlaylist: (String) -> Unit,
     onOpenVideo: () -> Unit,
+    onModernHome: () -> Unit,
 ) {
     val context = LocalContext.current
+    val pinnedListIds by vm.pinnedPlaylists.collectAsStateWithLifecycle()
     val songs by vm.songs.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
     val state by vm.state.collectAsStateWithLifecycle()
@@ -256,9 +260,12 @@ fun LibraryScreen(
     ) {
         // Header
         Row(
-            Modifier.padding(start = 20.dp, end = 4.dp, top = 12.dp),
+            Modifier.padding(start = 4.dp, end = 4.dp, top = 12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            IconButton(onClick = onModernHome) {
+                Icon(Icons.Rounded.Dashboard, contentDescription = "Modern home", tint = MaterialTheme.colorScheme.primary)
+            }
             Column(Modifier.weight(1f)) {
                 Text("STELLAR//DISC", style = neonTitleStyle(22))
                 Text(
@@ -326,6 +333,8 @@ fun LibraryScreen(
                 onDelete = { deleting = group },
                 onShare = { group.playlistId?.let(onSharePlaylist) },
                 onHide = { group.folder?.let { vm.hideFolder(it) }; openKey = null },
+                pinned = group.playlistId in pinnedListIds,
+                onPin = { group.playlistId?.let { vm.togglePinPlaylist(it) } },
             )
         }
         Spacer(Modifier.height(8.dp))
@@ -476,6 +485,8 @@ private fun GroupHeader(
     onDelete: () -> Unit,
     onShare: () -> Unit,
     onHide: () -> Unit,
+    pinned: Boolean,
+    onPin: () -> Unit,
 ) {
     Row(
         Modifier
@@ -497,6 +508,7 @@ private fun GroupHeader(
             )
         }
         if (group.kind == GroupKind.PLAYLIST) {
+            IconButton(onClick = onPin) { Icon(Icons.Rounded.PushPin, contentDescription = "Pin to home", tint = if (pinned) MaterialTheme.colorScheme.secondary else TextLo) }
             IconButton(onClick = onShare) { Icon(Icons.Rounded.Share, contentDescription = "Share", tint = MaterialTheme.colorScheme.primary) }
             IconButton(onClick = onRename) { Icon(Icons.Rounded.Edit, contentDescription = "Rename", tint = TextLo) }
             IconButton(onClick = onDelete) { Icon(Icons.Rounded.Delete, contentDescription = "Delete", tint = TextLo) }

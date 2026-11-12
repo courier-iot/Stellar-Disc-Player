@@ -110,6 +110,23 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     var showEq by rememberSaveable { mutableStateOf(false) }
     var sharePlaylistId by rememberSaveable { mutableStateOf<String?>(null) }
     var showShare by rememberSaveable { mutableStateOf(false) }
+    var showSearch by rememberSaveable { mutableStateOf(false) }
+    var homeGroup by remember { mutableStateOf<SongGroup?>(null) }
+    var showGroup by rememberSaveable { mutableStateOf(false) }
+    val modernHome by vm.modernHome.collectAsStateWithLifecycle()
+    val audioOnly by vm.audioOnly.collectAsStateWithLifecycle()
+    // With "audio only" on, videos open in Now Playing instead of fullscreen.
+    val openVideo: () -> Unit = {
+        if (audioOnly) {
+            showPlayer = true
+        } else {
+            showVideo = true
+        }
+    }
+    val openGroup: (SongGroup) -> Unit = {
+        homeGroup = it
+        showGroup = true
+    }
     var update by remember { mutableStateOf<UpdateInfo?>(null) }
     var crash by remember { mutableStateOf(CrashLog.read(context)) }
 
@@ -153,7 +170,18 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
         Starfield(Modifier.fillMaxSize(), animate = animate && !inPip, speed = 0.6f)
 
-        if (granted) {
+        if (granted && modernHome) {
+            HomeScreen(
+                vm = vm,
+                onOpenPlayer = { showPlayer = true },
+                onOpenSettings = { showSettings = true },
+                onOpenUplink = { showUplink = true },
+                onOpenSwap = { showSwap = true },
+                onOpenSearch = { showSearch = true },
+                onOpenGroup = openGroup,
+                onUnderTheHood = { vm.setModernHome(false) },
+            )
+        } else if (granted) {
             LibraryScreen(
                 vm = vm,
                 onOpenPlayer = { showPlayer = true },
@@ -164,7 +192,8 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
                     sharePlaylistId = it
                     showShare = true
                 },
-                onOpenVideo = { showVideo = true },
+                onOpenVideo = openVideo,
+                onModernHome = { vm.setModernHome(true) },
             )
         } else {
             PermissionScreen(
@@ -176,6 +205,20 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
                     )
                 },
             )
+        }
+
+        Overlay(showSearch && granted) {
+            SearchScreen(
+                vm = vm,
+                animate = animate,
+                onClose = { showSearch = false },
+                onOpenGroup = openGroup,
+                onOpenVideo = openVideo,
+            )
+        }
+
+        Overlay(showGroup && homeGroup != null && granted) {
+            homeGroup?.let { GroupPage(vm = vm, group = it, animate = animate, onClose = { showGroup = false }) }
         }
 
         AnimatedVisibility(
@@ -247,7 +290,7 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
 
         // Fullscreen video sits above everything so picture-in-picture shows just the video.
         AnimatedVisibility(
-            visible = showVideo && state.current?.isVideo == true,
+            visible = showVideo && state.current?.isVideo == true && !audioOnly,
             enter = fadeIn(),
             exit = fadeOut(),
         ) {
