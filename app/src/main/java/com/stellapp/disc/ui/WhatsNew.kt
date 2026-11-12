@@ -3,6 +3,12 @@ package com.stellapp.disc.ui
 /** Shown once after each update. Keep the newest version first. */
 object WhatsNew {
     val notes: Map<String, String> = linkedMapOf(
+        "3.1.2" to """
+            CHANGED
+            • Swap over a phone hotspot: connects even when Android says the hotspot has "no internet"
+            • The sharing phone lists all its network addresses, so the other phone finds the right one
+            • One mini player stays at the bottom of every music page instead of each page drawing its own
+        """.trimIndent(),
         "3.1.1" to """
             CHANGED
             • Fixed: Nearby Swap couldn't connect to the other phone at all

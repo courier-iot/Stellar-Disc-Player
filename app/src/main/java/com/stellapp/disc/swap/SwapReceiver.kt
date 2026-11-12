@@ -53,7 +53,7 @@ object SwapReceiver {
         job?.cancel()
         _session.value = SwapSession(SwapSource.NEARBY, SwapPhase.CONNECTING, p.name, message = "Reaching the other phone…")
         job = scope.launch {
-            val conn = SwapClient.connect(p)
+            val conn = SwapClient.connect(app, p)
             if (conn == null) {
                 fail(
                     "Couldn't reach the other phone. Check you're both on the same Wi-Fi (or you've joined their hotspot), " +

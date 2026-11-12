@@ -23,6 +23,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -71,6 +74,7 @@ import com.stellapp.disc.ui.theme.TextHi
 import com.stellapp.disc.ui.theme.TextLo
 import kotlinx.coroutines.delay
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     val context = LocalContext.current
@@ -233,66 +237,88 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     Box(Modifier.fillMaxSize()) {
         Starfield(Modifier.fillMaxSize(), animate = homeAnimate, speed = 0.6f)
 
-        if (granted && modernHome) {
-            HomeScreen(
-                vm = vm,
-                onOpenPlayer = { showPlayer = true },
-                onOpenSettings = { showSettings = true },
-                onOpenUplink = { showUplink = true },
-                onOpenSwap = { showSwap = true },
-                onOpenSearch = { showSearch = true },
-                onOpenGroup = openGroup,
-                onUnderTheHood = { vm.setModernHome(false) },
-            )
-        } else if (granted) {
-            LibraryScreen(
-                vm = vm,
-                onOpenPlayer = { showPlayer = true },
-                onOpenSettings = { showSettings = true },
-                onOpenUplink = { showUplink = true },
-                onOpenSwap = { showSwap = true },
-                onSharePlaylist = {
-                    sharePlaylistId = it
-                    showShare = true
-                },
-                onOpenVideo = openVideo,
-                onModernHome = { vm.setModernHome(true) },
-            )
-        } else {
-            PermissionScreen(
-                onGrant = { launcher.launch(requested) },
-                onOpenSettings = {
-                    context.startActivity(
-                        Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
-                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    )
-                },
-            )
-        }
-
-        Overlay(showSearch && granted) {
-            SearchScreen(
-                vm = vm,
-                animate = animate && !(showGroup || playerUp || toolUp || showVideo),
-                onClose = { showSearch = false },
-                onOpenGroup = openGroup,
-                onOpenVideo = openVideo,
-                onOpenPlayer = { showPlayer = true },
-            )
-        }
-
-        Overlay(showGroup && homeGroup != null && granted) {
-            homeGroup?.let { GroupPage(
+        // Music pages sit above one shared mini player that stays put while pages change.
+        // Now Playing, video and the tool screens (Settings, Uplink, Swap…) are drawn on top of it.
+        Column(Modifier.fillMaxSize()) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    // The bar below already clears the gesture/nav bar, so pages don't pad for it twice.
+                    .consumeWindowInsets(WindowInsets.navigationBars)
+            ) {
+            if (granted && modernHome) {
+                HomeScreen(
                     vm = vm,
-                    group = it,
-                    animate = animate && !(playerUp || toolUp || showVideo),
-                    onClose = { showGroup = false },
                     onOpenPlayer = { showPlayer = true },
-                    onSharePlaylist = { id ->
-                        sharePlaylistId = id
+                    onOpenSettings = { showSettings = true },
+                    onOpenUplink = { showUplink = true },
+                    onOpenSwap = { showSwap = true },
+                    onOpenSearch = { showSearch = true },
+                    onOpenGroup = openGroup,
+                    onUnderTheHood = { vm.setModernHome(false) },
+                )
+            } else if (granted) {
+                LibraryScreen(
+                    vm = vm,
+                    onOpenPlayer = { showPlayer = true },
+                    onOpenSettings = { showSettings = true },
+                    onOpenUplink = { showUplink = true },
+                    onOpenSwap = { showSwap = true },
+                    onSharePlaylist = {
+                        sharePlaylistId = it
                         showShare = true
                     },
-                ) }
+                    onOpenVideo = openVideo,
+                    onModernHome = { vm.setModernHome(true) },
+                )
+            } else {
+                PermissionScreen(
+                    onGrant = { launcher.launch(requested) },
+                    onOpenSettings = {
+                        context.startActivity(
+                            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
+                                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                        )
+                    },
+                )
+            }
+
+            Overlay(showSearch && granted) {
+                SearchScreen(
+                    vm = vm,
+                    animate = animate && !(showGroup || playerUp || toolUp || showVideo),
+                    onClose = { showSearch = false },
+                    onOpenGroup = openGroup,
+                    onOpenVideo = openVideo,
+                    onOpenPlayer = { showPlayer = true },
+                )
+            }
+
+            Overlay(showGroup && homeGroup != null && granted) {
+                homeGroup?.let { GroupPage(
+                        vm = vm,
+                        group = it,
+                        animate = animate && !(playerUp || toolUp || showVideo),
+                        onClose = { showGroup = false },
+                        onOpenPlayer = { showPlayer = true },
+                        onSharePlaylist = { id ->
+                            sharePlaylistId = id
+                            showShare = true
+                        },
+                    ) }
+            }
+            }
+            if (granted) {
+                MiniPlayer(
+                    s = state,
+                    onTogglePlay = vm::togglePlay,
+                    onNext = vm::next,
+                    onOpen = { showPlayer = true },
+                    onPrevious = { vm.swipeTrack(false) },
+                )
+            }
+            Spacer(Modifier.navigationBarsPadding())
         }
 
         AnimatedVisibility(

@@ -82,6 +82,16 @@ class LanHttpTest {
     }
 
     @Test
+    fun matchesHotspotSubnets() {
+        fun v4(t: String) = java.net.InetAddress.getByName(t) as java.net.Inet4Address
+        assertTrue(SwapClient.sameSubnet(v4("10.118.230.17"), 24, v4("10.118.230.130")))
+        assertTrue(SwapClient.sameSubnet(v4("192.168.43.1"), 24, v4("192.168.43.200")))
+        assertTrue(SwapClient.sameSubnet(v4("172.20.10.2"), 28, v4("172.20.10.1")))
+        org.junit.Assert.assertFalse(SwapClient.sameSubnet(v4("10.118.231.17"), 24, v4("10.118.230.130")))
+        org.junit.Assert.assertFalse(SwapClient.sameSubnet(v4("172.20.10.2"), 28, v4("172.20.10.20")))
+    }
+
+    @Test
     fun splitsBaseAddress() {
         assertEquals("192.168.1.5" to 47821, SwapClient.hostPort("http://192.168.1.5:47821"))
     }

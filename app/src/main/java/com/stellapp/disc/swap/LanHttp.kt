@@ -46,9 +46,12 @@ internal object LanHttp {
         rangeFrom: Long = 0L,
         connectTimeoutMs: Int = 5_000,
         readTimeoutMs: Int = 30_000,
+        /** Pins the socket to one network (e.g. a hotspot Android thinks has "no internet"). */
+        bind: ((Socket) -> Unit)? = null,
     ): Response {
         val socket = Socket()
         try {
+            bind?.invoke(socket)
             socket.connect(InetSocketAddress(host, port), connectTimeoutMs)
             socket.soTimeout = readTimeoutMs
             socket.tcpNoDelay = true

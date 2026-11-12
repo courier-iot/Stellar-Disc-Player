@@ -292,13 +292,15 @@ class SwapServer(
             }
             val wifiLike = listOf("wlan", "ap", "swlan", "softap", "eth", "p2p", "rndis", "bt-pan")
             fun rank(name: String) = wifiLike.indexOfFirst { name.startsWith(it) }.let { if (it < 0) 99 else it }
-            val ranked = all.sortedBy { rank(it.name) }
-            val preferred = ranked.filter { rank(it.name) < 99 }.ifEmpty { ranked }
-            return preferred.flatMap { it.inetAddresses.toList() }
+            // Every private address, Wi-Fi and hotspot ones first. Interface names differ by phone
+            // maker, so nothing is thrown away: the other phone simply tries them in order.
+            return all.sortedBy { rank(it.name) }
+                .flatMap { it.inetAddresses.toList() }
                 .filterIsInstance<Inet4Address>()
                 .filter { it.isSiteLocalAddress }
                 .mapNotNull { it.hostAddress }
                 .distinct()
+                .take(4)
         }
     }
 }

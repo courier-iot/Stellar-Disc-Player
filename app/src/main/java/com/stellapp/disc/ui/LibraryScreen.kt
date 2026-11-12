@@ -476,13 +476,6 @@ fun LibraryScreen(
             }
         }
 
-        MiniPlayer(
-            s = state,
-            onTogglePlay = vm::togglePlay,
-            onNext = vm::next,
-            onOpen = onOpenPlayer,
-            onPrevious = { vm.swipeTrack(false) },
-        )
         Spacer(Modifier.navigationBarsPadding())
     }
 

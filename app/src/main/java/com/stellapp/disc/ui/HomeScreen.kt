@@ -389,7 +389,6 @@ fun HomeScreen(
             }
         }
 
-        MiniPlayer(s = state, onTogglePlay = vm::togglePlay, onNext = vm::next, onOpen = onOpenPlayer, onPrevious = { vm.swipeTrack(false) })
         Spacer(Modifier.navigationBarsPadding())
     }
 
@@ -713,7 +712,6 @@ fun GroupPage(
                     )
                 }
             }
-            MiniPlayer(s = state, onTogglePlay = vm::togglePlay, onNext = vm::next, onOpen = onOpenPlayer, onPrevious = { vm.swipeTrack(false) })
         }
     }
 
@@ -852,7 +850,6 @@ fun SearchScreen(
                     }
                 }
             }
-            MiniPlayer(s = state, onTogglePlay = vm::togglePlay, onNext = vm::next, onOpen = onOpenPlayer, onPrevious = { vm.swipeTrack(false) })
         }
     }
 
