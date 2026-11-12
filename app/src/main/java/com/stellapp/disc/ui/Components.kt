@@ -57,6 +57,9 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stellapp.disc.PlayerState
@@ -171,13 +174,20 @@ fun NeonChip(label: String, selected: Boolean, onClick: () -> Unit) {
                 if (selected) Modifier.background(primary)
                 else Modifier.border(1.dp, primary.copy(alpha = 0.5f), SmallCut)
             )
-            .clickable(onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
+            .semantics {
+                if (selected) {
+                    stateDescription = "On"
+                }
+            }
             .padding(horizontal = 14.dp, vertical = 7.dp),
         color = if (selected) Void else primary,
         fontFamily = Mono,
         fontWeight = FontWeight.Bold,
         fontSize = 12.sp,
         letterSpacing = 2.sp,
+        maxLines = 1,
+        softWrap = false,
     )
 }
 
@@ -194,7 +204,12 @@ fun SongRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .combinedClickable(onClick = onClick, onLongClick = onLongClick)
+            .combinedClickable(
+                onClick = onClick,
+                onClickLabel = "Play",
+                onLongClick = onLongClick,
+                onLongClickLabel = if (onLongClick != null) "Song options" else null,
+            )
             .background(if (active) primary.copy(alpha = 0.08f) else Color.Transparent)
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,

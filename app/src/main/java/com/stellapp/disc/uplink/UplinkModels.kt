@@ -1,5 +1,7 @@
 package com.stellapp.disc.uplink
 
+import org.json.JSONObject
+
 /**
  * @param codec value for yt-dlp's --audio-format (audio) or the container (video)
  * @param bitrate whether the bitrate picker applies
@@ -98,3 +100,47 @@ data class FinishedBatch(val songIds: List<Long>, val queue: Boolean)
 
 /** Power state of the yt-dlp / FFmpeg engines behind Uplink. */
 enum class EngineState { OFF, SPOOLING, ONLINE, COOLING, HOLDING }
+
+/** Saved form of a download, so the queue survives the app being closed. */
+fun DownloadOptions.toJson(): JSONObject = JSONObject()
+    .put("url", url)
+    .put("format", format.name)
+    .put("kbps", audioKbps)
+    .put("height", maxHeight)
+    .put("playlist", wholePlaylist)
+    .put("embed", embed)
+    .put("target", when (val t = target) {
+        PlaylistTarget.None -> "none"
+        is PlaylistTarget.Existing -> "id:" + t.id
+        is PlaylistTarget.New -> "new:" + t.name
+    })
+    .put("queue", queueWhenDone)
+    .put("extra", extraArgs)
+    .put("subs", subtitles)
+    .put("subLangs", subLangs)
+    .put("skip", skipExisting)
+
+fun downloadOptionsFromJson(o: JSONObject): DownloadOptions? {
+    val url = o.optString("url").ifBlank { return null }
+    val target = o.optString("target", "none").let {
+        when {
+            it.startsWith("id:") -> PlaylistTarget.Existing(it.removePrefix("id:"))
+            it.startsWith("new:") -> PlaylistTarget.New(it.removePrefix("new:"))
+            else -> PlaylistTarget.None
+        }
+    }
+    return DownloadOptions(
+        url = url,
+        format = runCatching { DlFormat.valueOf(o.optString("format")) }.getOrDefault(DlFormat.MP3),
+        audioKbps = o.optInt("kbps", 320),
+        maxHeight = o.optInt("height", 1080),
+        wholePlaylist = o.optBoolean("playlist", true),
+        embed = o.optBoolean("embed", true),
+        target = target,
+        queueWhenDone = o.optBoolean("queue", false),
+        extraArgs = o.optString("extra", ""),
+        subtitles = o.optBoolean("subs", false),
+        subLangs = o.optString("subLangs", "en.*"),
+        skipExisting = o.optBoolean("skip", true),
+    )
+}

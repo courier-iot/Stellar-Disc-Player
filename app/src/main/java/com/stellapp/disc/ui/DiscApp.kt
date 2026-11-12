@@ -9,6 +9,8 @@ import android.provider.Settings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
@@ -96,9 +98,16 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
             launcher.launch(requested)
         }
     }
-    LaunchedEffect(granted) { if (granted) vm.loadLibrary() }
+    LaunchedEffect(granted) {
+        if (granted) {
+            vm.loadLibrary()
+            // Downloads that were cut off last time (app closed, phone restarted…) carry on.
+            val resumed = UplinkManager.resumePending(context)
+            if (resumed > 0) vm.post("Resuming $resumed download${if (resumed == 1) "" else "s"} from last time")
+        }
+    }
 
-    val animate by vm.animateBackground.collectAsStateWithLifecycle()
+    val animateSetting by vm.animateBackground.collectAsStateWithLifecycle()
     val state by vm.state.collectAsStateWithLifecycle()
     val message by vm.message.collectAsStateWithLifecycle()
 
@@ -117,15 +126,26 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     var engineGate by remember { mutableStateOf<EngineGate?>(null) }
     var shownGate by remember { mutableStateOf(EngineGate.SPOOL) }
     LaunchedEffect(engineGate) { engineGate?.let { shownGate = it } }
-    LaunchedEffect(showUplink, granted) { if (showUplink && granted) engineGate = EngineGate.SPOOL }
+    LaunchedEffect(showUplink, granted) {
+        if (showUplink && granted) {
+            engineGate = EngineGate.SPOOL
+        }
+    }
     // Leaving Uplink for the player or Swap: shut the engines off without the screen.
     val leaveUplinkQuietly: () -> Unit = {
         UplinkManager.coolDown()
         showUplink = false
     }
     var homeGroup by remember { mutableStateOf<SongGroup?>(null) }
+    // The open page's key survives Android closing the app in the background, so it can be rebuilt.
+    var homeGroupKey by rememberSaveable { mutableStateOf<String?>(null) }
     var showGroup by rememberSaveable { mutableStateOf(false) }
     val modernHome by vm.modernHome.collectAsStateWithLifecycle()
+    // Only the screen on top animates: anything fully covered stops drawing, which saves battery.
+    val animate = animateSetting && !inPip
+    val playerUp = showPlayer && state.current != null
+    val toolUp = showUplink || showSwap || showShare || showSettings || showYtSignIn || showEq || showCredits
+    val homeAnimate = animate && !(playerUp || showSearch || showGroup || toolUp || showVideo)
     val audioOnly by vm.audioOnly.collectAsStateWithLifecycle()
     // With "audio only" on, videos open in Now Playing instead of fullscreen.
     val openVideo: () -> Unit = {
@@ -137,7 +157,20 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     }
     val openGroup: (SongGroup) -> Unit = {
         homeGroup = it
+        homeGroupKey = it.key
         showGroup = true
+    }
+    val librarySongs by vm.songs.collectAsStateWithLifecycle()
+    val allPlaylists by vm.playlists.collectAsStateWithLifecycle()
+    LaunchedEffect(showGroup, homeGroup, librarySongs, allPlaylists) {
+        if (showGroup && homeGroup == null) {
+            val key = homeGroupKey
+            val rebuilt = if (key != null && librarySongs.isNotEmpty()) restoreGroup(key, librarySongs, allPlaylists) else null
+            when {
+                rebuilt != null -> { homeGroup = rebuilt }
+                librarySongs.isNotEmpty() -> { showGroup = false }
+            }
+        }
     }
     var update by remember { mutableStateOf<UpdateInfo?>(null) }
     var crash by remember { mutableStateOf(CrashLog.read(context)) }
@@ -180,7 +213,7 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     }
 
     Box(Modifier.fillMaxSize()) {
-        Starfield(Modifier.fillMaxSize(), animate = animate && !inPip, speed = 0.6f)
+        Starfield(Modifier.fillMaxSize(), animate = homeAnimate, speed = 0.6f)
 
         if (granted && modernHome) {
             HomeScreen(
@@ -222,7 +255,7 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
         Overlay(showSearch && granted) {
             SearchScreen(
                 vm = vm,
-                animate = animate,
+                animate = animate && !(showGroup || playerUp || toolUp || showVideo),
                 onClose = { showSearch = false },
                 onOpenGroup = openGroup,
                 onOpenVideo = openVideo,
@@ -230,21 +263,21 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
         }
 
         Overlay(showGroup && homeGroup != null && granted) {
-            homeGroup?.let { GroupPage(vm = vm, group = it, animate = animate, onClose = { showGroup = false }) }
+            homeGroup?.let { GroupPage(vm = vm, group = it, animate = animate && !(playerUp || toolUp || showVideo), onClose = { showGroup = false }) }
         }
 
         AnimatedVisibility(
             visible = showPlayer && state.current != null,
-            enter = slideInVertically { it } + fadeIn(),
-            exit = slideOutVertically { it } + fadeOut(),
+            enter = slideInVertically(tween(380, easing = FastOutSlowInEasing)) { it } + fadeIn(tween(240)),
+            exit = slideOutVertically(tween(300, easing = FastOutSlowInEasing)) { it } + fadeOut(tween(220)),
         ) {
-            NowPlayingScreen(vm = vm, animate = animate, onClose = { showPlayer = false }, onOpenVideo = { showVideo = true })
+            NowPlayingScreen(vm = vm, animate = animate && !(toolUp || showVideo), onClose = { showPlayer = false }, onOpenVideo = { showVideo = true })
         }
 
         Overlay(showUplink && granted) {
             UplinkScreen(
                 vm = vm,
-                animate = animate,
+                animate = animate && !(showSwap || showSettings || showCredits || showVideo),
                 onClose = { engineGate = EngineGate.COOL },
                 onOpenCredits = { showCredits = true },
                 onOpenSwapList = { text ->
@@ -270,7 +303,7 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
         Overlay(showSwap && granted) {
             SwapReceiveScreen(
                 vm = vm,
-                animate = animate,
+                animate = animate && !(showShare || showSettings || showCredits || showVideo),
                 onClose = { showSwap = false },
                 onOpenUplink = {
                     showSwap = false
@@ -281,14 +314,14 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
 
         Overlay(showShare && sharePlaylistId != null && granted) {
             sharePlaylistId?.let {
-                SwapShareScreen(vm = vm, playlistId = it, animate = animate, onClose = { showShare = false })
+                SwapShareScreen(vm = vm, playlistId = it, animate = animate && !(showSettings || showCredits || showVideo), onClose = { showShare = false })
             }
         }
 
         Overlay(showSettings) {
             SettingsScreen(
                 vm = vm,
-                animate = animate,
+                animate = animate && !(showEq || showCredits || showYtSignIn || showVideo),
                 onClose = { showSettings = false },
                 onOpenEqualizer = { showEq = true },
                 onOpenCredits = { showCredits = true },
@@ -302,12 +335,12 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
         }
 
         Overlay(showEq) {
-            EqualizerScreen(animate = animate, onClose = { showEq = false })
+            EqualizerScreen(animate = animate && !showVideo, onClose = { showEq = false })
         }
 
         Overlay(showCredits) {
             CreditsScreen(
-                animate = animate,
+                animate = animate && !showVideo,
                 onClose = { showCredits = false },
                 onUpdateFound = { update = it },
             )
@@ -388,8 +421,9 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
 private fun Overlay(visible: Boolean, content: @Composable () -> Unit) {
     AnimatedVisibility(
         visible = visible,
-        enter = slideInHorizontally { it } + fadeIn(),
-        exit = slideOutHorizontally { it } + fadeOut(),
+        // A short, eased glide rather than a full-width slide feels smoother and quicker.
+        enter = slideInHorizontally(tween(340, easing = FastOutSlowInEasing)) { it / 3 } + fadeIn(tween(260)),
+        exit = slideOutHorizontally(tween(260, easing = FastOutSlowInEasing)) { it / 3 } + fadeOut(tween(200)),
     ) {
         content()
     }
@@ -467,5 +501,32 @@ private fun PermissionScreen(onGrant: () -> Unit, onOpenSettings: () -> Unit) {
         TextButton(onClick = onOpenSettings) {
             Text("Open app settings", color = TextLo)
         }
+    }
+}
+
+/** Rebuilds a playlist, artist or album page from its key after the app was restarted. */
+private fun restoreGroup(
+    key: String,
+    songs: List<com.stellapp.disc.data.Song>,
+    playlists: List<com.stellapp.disc.data.Playlist>,
+): SongGroup? {
+    val byId = songs.associateBy { it.id }
+    return when {
+        key.startsWith("playlist:") -> {
+            val p = playlists.firstOrNull { it.id == key.removePrefix("playlist:") } ?: return null
+            val list = p.songIds.mapNotNull { byId[it] }
+            SongGroup(key, p.name, "${list.size} tracks", list, list.firstOrNull(), GroupKind.PLAYLIST, p.id)
+        }
+        key.startsWith("artist:") -> {
+            val name = key.removePrefix("artist:")
+            val list = songs.filter { !it.isVideo && it.artist == name }.sortedWith(compareBy({ it.album.lowercase() }, { it.track }))
+            if (list.isEmpty()) null else SongGroup(key, name, "artist", list, list.first(), GroupKind.ARTIST)
+        }
+        key.startsWith("album:") -> {
+            val id = key.removePrefix("album:").toLongOrNull() ?: return null
+            val list = songs.filter { it.albumId == id }.sortedWith(compareBy({ it.track }, { it.title.lowercase() }))
+            if (list.isEmpty()) null else SongGroup(key, list.first().album, list.first().artist, list, list.first(), GroupKind.ALBUM)
+        }
+        else -> null // generated mixes change over time, so they aren't restored
     }
 }

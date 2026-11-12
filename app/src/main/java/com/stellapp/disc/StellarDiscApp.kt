@@ -23,4 +23,9 @@ class StellarDiscApp : Application() {
         AudioFx.init(this)
         PlaybackExtras.init(this)
     }
+
+    override fun onTrimMemory(level: Int) {
+        super.onTrimMemory(level)
+        com.stellapp.disc.ui.BackdropMemory.trim(level)
+    }
 }

@@ -69,12 +69,20 @@ object UplinkManager {
         val app = context.applicationContext
         val id = "dl" + System.currentTimeMillis().toString(36) + (100..999).random()
         _jobs.update { it + DownloadJob(id = id, options = options, message = "Waiting in the queue…") }
-        ContextCompat.startForegroundService(app, Intent(app, DownloadService::class.java))
+        savePending(app)
+        try {
+            ContextCompat.startForegroundService(app, Intent(app, DownloadService::class.java))
+        } catch (e: Exception) {
+            // Android won't start a foreground service right now (app in the background, or the
+            // daily background-download limit was reached). The job still runs while the app is
+            // alive, and is saved so it resumes next time otherwise.
+        }
         running[id] = scope.launch {
             runLock.withLock {
                 if (find(id)?.status == JobStatus.QUEUED) process(app, id)
             }
             running.remove(id)
+            savePending(app)
             // Downloads that outlived the Uplink screen: power down once the last one lands.
             powerDownIfIdle()
         }
@@ -182,6 +190,39 @@ object UplinkManager {
     /** Lets other features (like Swap) tell the library that new files arrived. */
     fun announce(batch: FinishedBatch) {
         _finished.tryEmit(batch)
+    }
+
+    // ---------- saved queue ----------
+
+    private fun pendingFile(context: Context) = File(context.applicationContext.filesDir, "uplink_pending.json")
+    @Volatile private var resumed = false
+
+    /** Writes every download that hasn't finished yet, so they can resume after the app is closed. */
+    private fun savePending(context: Context) {
+        try {
+            val arr = org.json.JSONArray()
+            _jobs.value.filter { it.status.active }.forEach { arr.put(it.options.toJson()) }
+            val f = pendingFile(context)
+            if (arr.length() == 0) f.delete() else f.writeText(arr.toString())
+        } catch (_: Exception) {
+        }
+    }
+
+    /** Re-queues downloads that were cut off last time. Returns how many. Runs once per app start. */
+    fun resumePending(context: Context): Int {
+        if (resumed) return 0
+        resumed = true
+        val f = pendingFile(context)
+        if (!f.exists()) return 0
+        val options = try {
+            val arr = org.json.JSONArray(f.readText())
+            (0 until arr.length()).mapNotNull { downloadOptionsFromJson(arr.getJSONObject(it)) }
+        } catch (e: Exception) {
+            emptyList()
+        }
+        f.delete()
+        options.forEach { enqueue(context, it) }
+        return options.size
     }
 
     // ---------- engine power ----------

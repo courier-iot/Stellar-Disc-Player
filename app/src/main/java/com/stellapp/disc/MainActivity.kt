@@ -12,7 +12,10 @@ import androidx.activity.viewModels
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.compose.runtime.CompositionLocalProvider
 import com.stellapp.disc.ui.DiscApp
+import com.stellapp.disc.ui.LocalCalmMotion
+import com.stellapp.disc.ui.rememberPowerSaveMode
 import com.stellapp.disc.ui.theme.DiscTheme
 
 class MainActivity : ComponentActivity() {
@@ -27,7 +30,11 @@ class MainActivity : ComponentActivity() {
         setContent {
             val accent by vm.accentIndex.collectAsStateWithLifecycle()
             DiscTheme(accentIndex = accent) {
-                DiscApp(vm = vm, inPip = inPip.value, onEnterPip = { enterPip() })
+                // Battery Saver calms every animation in the app.
+                val powerSave = rememberPowerSaveMode()
+                CompositionLocalProvider(LocalCalmMotion provides powerSave) {
+                    DiscApp(vm = vm, inPip = inPip.value, onEnterPip = { enterPip() })
+                }
             }
         }
     }

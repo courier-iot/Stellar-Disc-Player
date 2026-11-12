@@ -16,6 +16,7 @@ import com.stellapp.disc.data.TasteStore
 import com.stellapp.disc.playback.AudioFx
 import com.stellapp.disc.playback.PlaybackExtras
 import com.stellapp.disc.playback.QueueStore
+import com.stellapp.disc.playback.Rotation
 import com.stellapp.disc.widget.WidgetUpdater
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -93,6 +94,10 @@ class PlaybackService : MediaSessionService() {
                 finishListen(natural = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT)
                 tId = mediaItem?.mediaId?.toLongOrNull() ?: -1
                 tDuration = 0
+                // Random rotation: trim songs well behind you and deal new ones onto the end.
+                if (Rotation.active && reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
+                    scope.launch { Rotation.onTrackChanged(player) }
+                }
             }
 
             override fun onAudioSessionIdChanged(audioSessionId: Int) {

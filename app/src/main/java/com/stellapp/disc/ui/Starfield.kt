@@ -2,7 +2,20 @@ package com.stellapp.disc.ui
 
 import androidx.compose.foundation.Canvas
 import androidx.compose.material3.MaterialTheme
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.os.PowerManager
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
@@ -34,17 +47,56 @@ internal fun makeStars(count: Int, seed: Int = 7): List<Star> {
     return List(count) { Star(r.nextFloat(), r.nextFloat(), r.nextFloat(), r.nextInt(10)) }
 }
 
-/** Seconds of animation time; stands still when [animate] is off. */
+/** True while Battery Saver is on: animations slow down and draw at a lower frame rate. */
+val LocalCalmMotion = staticCompositionLocalOf { false }
+
+/** Watches Android's Battery Saver. */
+@Composable
+fun rememberPowerSaveMode(): Boolean {
+    val context = LocalContext.current.applicationContext
+    val pm = remember { context.getSystemService(Context.POWER_SERVICE) as PowerManager }
+    var on by remember { mutableStateOf(pm.isPowerSaveMode) }
+    DisposableEffect(Unit) {
+        val receiver = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, i: Intent?) {
+                on = pm.isPowerSaveMode
+            }
+        }
+        androidx.core.content.ContextCompat.registerReceiver(
+            context, receiver, IntentFilter(PowerManager.ACTION_POWER_SAVE_MODE_CHANGED), androidx.core.content.ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        onDispose { context.unregisterReceiver(receiver) }
+    }
+    return on
+}
+
+/**
+ * Seconds of animation time; stands still when [animate] is off or the app isn't on screen.
+ * With Battery Saver on it moves at half speed and updates about 20 times a second.
+ */
 @Composable
 internal fun rememberSpaceTime(animate: Boolean, speed: Float): State<Float> {
     val currentSpeed by rememberUpdatedState(speed)
+    val calm = LocalCalmMotion.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
+    val lifeState by lifecycle.currentStateFlow.collectAsState()
+    val visible = lifeState.isAtLeast(Lifecycle.State.STARTED)
     val time = remember { mutableFloatStateOf(0f) }
-    LaunchedEffect(animate) {
-        if (!animate) return@LaunchedEffect
+    LaunchedEffect(animate, visible, calm) {
+        if (!animate || !visible) return@LaunchedEffect
         var last = 0L
+        var pending = 0f
+        var frame = 0
         while (true) {
             withFrameNanos { now ->
-                if (last != 0L) time.floatValue += (now - last) / 1_000_000_000f * currentSpeed
+                if (last != 0L) {
+                    pending += (now - last) / 1_000_000_000f * currentSpeed * (if (calm) 0.5f else 1f)
+                    frame++
+                    if (!calm || frame % 3 == 0) {
+                        time.floatValue += pending
+                        pending = 0f
+                    }
+                }
                 last = now
             }
         }

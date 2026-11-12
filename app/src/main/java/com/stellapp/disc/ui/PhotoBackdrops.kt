@@ -76,6 +76,20 @@ private object PhotoCache {
     val thumbs = LruCache<String, ImageBitmap>(40)
 }
 
+/** Lets the app drop cached backdrop images when Android is short on memory. */
+object BackdropMemory {
+    fun trim(level: Int) {
+        PhotoCache.thumbs.evictAll()
+        if (level >= android.content.ComponentCallbacks2.TRIM_MEMORY_BACKGROUND) PhotoCache.full.evictAll()
+    }
+}
+
+/** Photos have no transparency, so 16-bit colour halves their memory with no visible change. */
+private fun lean() = BitmapFactory.Options().apply {
+    inScaled = false
+    inPreferredConfig = Bitmap.Config.RGB_565
+}
+
 /** Loads an image off the main thread, keeping a couple of recent ones in memory. */
 @Composable
 internal fun rememberPhoto(key: String, thumbnail: Boolean, load: (Context) -> Bitmap?): ImageBitmap? {
@@ -99,7 +113,7 @@ internal fun rememberPhoto(key: String, thumbnail: Boolean, load: (Context) -> B
 }
 
 internal fun decodeResource(context: Context, id: Int): Bitmap? =
-    BitmapFactory.decodeResource(context.resources, id, BitmapFactory.Options().apply { inScaled = false })
+    BitmapFactory.decodeResource(context.resources, id, lean())
 
 /** The "Your photo" backdrop: one picture copied into the app's own storage. */
 object CustomBackdrop {
@@ -152,12 +166,12 @@ object CustomBackdrop {
         BitmapFactory.decodeFile(f.absolutePath, bounds)
         var sample = 1
         while (max(bounds.outWidth, bounds.outHeight) / (sample * 2) >= 400) sample *= 2
-        return BitmapFactory.decodeFile(f.absolutePath, BitmapFactory.Options().apply { inSampleSize = sample })
+        return BitmapFactory.decodeFile(f.absolutePath, lean().apply { inSampleSize = sample })
     }
 
     internal fun decodeFull(context: Context): Bitmap? {
         val f = file(context)
-        return if (f.exists()) BitmapFactory.decodeFile(f.absolutePath) else null
+        return if (f.exists()) BitmapFactory.decodeFile(f.absolutePath, lean()) else null
     }
 }
 

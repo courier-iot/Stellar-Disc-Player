@@ -15,7 +15,10 @@ import androidx.media3.common.C
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
-import com.stellapp.disc.data.Backup
+import com.stellapp.disc.data.AppSettings
+import com.stellapp.disc.data.LibraryTransfer
+import com.stellapp.disc.lyrics.LyricsRepository
+import com.stellapp.disc.uplink.UplinkSettings
 import com.stellapp.disc.data.LinkStore
 import com.stellapp.disc.data.MetaOverride
 import com.stellapp.disc.data.MetaStore
@@ -36,6 +39,7 @@ import com.stellapp.disc.lyrics.LrcParser
 import com.stellapp.disc.lyrics.Lyrics
 import com.stellapp.disc.lyrics.LyricsStore
 import com.stellapp.disc.playback.PlaybackExtras
+import com.stellapp.disc.playback.Rotation
 import com.stellapp.disc.swap.MatchKind
 import com.stellapp.disc.swap.RemoteTrack
 import com.stellapp.disc.swap.ShareText
@@ -108,30 +112,25 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     val pinnedSongs: StateFlow<List<Long>> = PinStore.songs
     val pinnedPlaylists: StateFlow<List<String>> = PinStore.playlists
 
-    private val _modernHome = MutableStateFlow(prefs.getBoolean(KEY_MODERN_HOME, true))
+    /** Look-and-feel settings live in their own class; the flows are re-exposed here for the UI. */
+    private val settings = AppSettings(prefs)
+    private val uplinkSettings = UplinkSettings(prefs)
+
     /** true = the new home overview, false = the "under the hood" library view. */
-    val modernHome: StateFlow<Boolean> = _modernHome.asStateFlow()
+    val modernHome: StateFlow<Boolean> = settings.modernHome
 
     private val _audioOnly = MutableStateFlow(prefs.getBoolean(KEY_AUDIO_ONLY, false))
     /** Play videos without the picture (saves battery). */
     val audioOnly: StateFlow<Boolean> = _audioOnly.asStateFlow()
 
-    private val _backdrop = MutableStateFlow(
-        runCatching { com.stellapp.disc.ui.Backdrop.valueOf(prefs.getString(KEY_BACKDROP, null) ?: "SYNTHWAVE") }
-            .getOrDefault(com.stellapp.disc.ui.Backdrop.SYNTHWAVE)
-    )
     /** Scene drawn behind the now-playing screen. */
-    val backdrop: StateFlow<com.stellapp.disc.ui.Backdrop> = _backdrop.asStateFlow()
+    val backdrop: StateFlow<com.stellapp.disc.ui.Backdrop> = settings.backdrop
 
-    private val _clearView = MutableStateFlow(prefs.getBoolean(KEY_CLEAR_VIEW, false))
     /** Now Playing with the centre disc/video faded out, so the backdrop shows in full. */
-    val clearView: StateFlow<Boolean> = _clearView.asStateFlow()
+    val clearView: StateFlow<Boolean> = settings.clearView
 
-    private val _heroMode = MutableStateFlow(
-        runCatching { HeroMode.valueOf(prefs.getString(KEY_HERO_MODE, null) ?: "TOP_PICK") }.getOrDefault(HeroMode.TOP_PICK)
-    )
     /** What the big hero card on Home shows. */
-    val heroMode: StateFlow<HeroMode> = _heroMode.asStateFlow()
+    val heroMode: StateFlow<HeroMode> = settings.heroMode
 
     private val _ytSignedIn = MutableStateFlow(UplinkManager.hasCookies(app))
     val ytSignedIn: StateFlow<Boolean> = _ytSignedIn.asStateFlow()
@@ -147,24 +146,28 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     val videoFullscreen: StateFlow<Boolean> = _videoFullscreen.asStateFlow()
 
     // ---------- settings ----------
-    private val _accent = MutableStateFlow(prefs.getInt(KEY_ACCENT, 0))
-    val accentIndex: StateFlow<Int> = _accent.asStateFlow()
-
-    private val _animate = MutableStateFlow(prefs.getBoolean(KEY_ANIMATE, true))
-    val animateBackground: StateFlow<Boolean> = _animate.asStateFlow()
-
-    private val _lyricsAuto = MutableStateFlow(prefs.getBoolean(KEY_LYRICS_AUTO, false))
-    val lyricsAuto: StateFlow<Boolean> = _lyricsAuto.asStateFlow()
-
-    private val _onboarded = MutableStateFlow(prefs.getBoolean(KEY_ONBOARDED, false))
-    val onboarded: StateFlow<Boolean> = _onboarded.asStateFlow()
-
-    private val _lyricsVersion = MutableStateFlow(0)
-    val lyricsVersion: StateFlow<Int> = _lyricsVersion.asStateFlow()
+    val accentIndex: StateFlow<Int> = settings.accent
+    val animateBackground: StateFlow<Boolean> = settings.animate
+    val lyricsAuto: StateFlow<Boolean> = settings.lyricsAuto
+    val onboarded: StateFlow<Boolean> = settings.onboarded
 
     private val _message = MutableStateFlow<String?>(null)
     /** A short note to show at the bottom of the screen. */
     val message: StateFlow<String?> = _message.asStateFlow()
+
+    private val lyricsRepo = LyricsRepository(app, viewModelScope) { post(it) }
+    val lyricsVersion: StateFlow<Int> = lyricsRepo.version
+
+    private val transfer = LibraryTransfer(
+        ctx = app,
+        scope = viewModelScope,
+        settings = settings,
+        allSongs = { rawSongs.map { MetaStore.apply(it) } },
+        visibleSongs = { _songs.value },
+        songById = { songById[it.toString()] },
+        setFade = { PlaybackExtras.setFade(it) },
+        post = { post(it) },
+    )
 
     // ---------- sharing ----------
     private val _sharedSwap = MutableStateFlow<String?>(null)
@@ -271,6 +274,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val all = rawSongs.map { MetaStore.apply(it) }
         songById = all.associateBy { it.id.toString() }
         _songs.value = all.filter { it.folder !in hidden }
+        Rotation.resumeIfSaved(ctx, _songs.value.filter { !it.isVideo }.map { it.toMediaItem() })
         sync(rebuildQueue = true)
     }
 
@@ -302,6 +306,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun playList(list: List<Song>, index: Int, shuffle: Boolean? = null) {
         val c = controller ?: return
         if (list.isEmpty()) return
+        Rotation.stop(ctx)
         shuffle?.let { c.shuffleModeEnabled = it }
         c.setMediaItems(list.map { it.toMediaItem() }, index.coerceIn(0, list.lastIndex), 0L)
         c.prepare()
@@ -317,8 +322,15 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             playList(listOf(song), 0)
             return
         }
-        val rest = _songs.value.filter { !it.isVideo && it.id != song.id }.shuffled()
-        playList(listOf(song) + rest, 0, shuffle = false)
+        val c = controller ?: return
+        // A rolling queue of 150 random songs: after song 50 the oldest drops off and a new one
+        // is dealt onto the end, cycling through the whole library (see playback/Rotation.kt).
+        val library = _songs.value.filter { !it.isVideo && it.id != song.id }.map { it.toMediaItem() }
+        val items = Rotation.start(ctx, song.toMediaItem(), library)
+        c.shuffleModeEnabled = false
+        c.setMediaItems(items, 0, 0L)
+        c.prepare()
+        c.play()
     }
 
     fun shuffleAll(list: List<Song>) {
@@ -443,25 +455,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             .build()
     }
 
-    fun setModernHome(on: Boolean) {
-        _modernHome.value = on
-        prefs.edit().putBoolean(KEY_MODERN_HOME, on).apply()
-    }
-
-    fun setBackdrop(b: com.stellapp.disc.ui.Backdrop) {
-        _backdrop.value = b
-        prefs.edit().putString(KEY_BACKDROP, b.name).apply()
-    }
-
-    fun setClearView(on: Boolean) {
-        _clearView.value = on
-        prefs.edit().putBoolean(KEY_CLEAR_VIEW, on).apply()
-    }
-
-    fun setHeroMode(m: HeroMode) {
-        _heroMode.value = m
-        prefs.edit().putString(KEY_HERO_MODE, m.name).apply()
-    }
+    fun setModernHome(on: Boolean) = settings.setModernHome(on)
+    fun setBackdrop(b: com.stellapp.disc.ui.Backdrop) = settings.setBackdrop(b)
+    fun setClearView(on: Boolean) = settings.setClearView(on)
+    fun setHeroMode(m: HeroMode) = settings.setHeroMode(m)
 
     fun togglePinSong(id: Long) = PinStore.toggleSong(id)
     fun togglePinPlaylist(id: String) = PinStore.togglePlaylist(id)
@@ -613,181 +610,18 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     // ================= lyrics =================
 
-    suspend fun loadLyrics(song: Song, allowOnline: Boolean): Lyrics? = withContext(Dispatchers.IO) {
-        LyricsStore.load(ctx, song.id)?.let { return@withContext LrcParser.parse(it, "saved") }
-        if (!song.isVideo && !song.isStream) {
-            Id3Lyrics.read(ctx, song.uri)?.let { return@withContext LrcParser.parse(it, "in the file") }
-        }
-        if (allowOnline && !song.isVideo) {
-            LrcLib.find(song.title, song.artist, song.album, song.durationMs)?.let {
-                LyricsStore.save(ctx, song.id, it)
-                return@withContext LrcParser.parse(it, "lrclib.net")
-            }
-        }
-        null
-    }
-
-    fun findLyricsOnline(song: Song) {
-        viewModelScope.launch {
-            post("Searching lrclib.net…")
-            val text = LrcLib.find(song.title, song.artist, song.album, song.durationMs)
-            if (text != null) {
-                withContext(Dispatchers.IO) { LyricsStore.save(ctx, song.id, text) }
-                _lyricsVersion.update { it + 1 }
-                post("Lyrics found")
-            } else {
-                post("No lyrics found for this track")
-            }
-        }
-    }
-
-    fun saveLyrics(song: Song, text: String) {
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) { LyricsStore.save(ctx, song.id, text) }
-            _lyricsVersion.update { it + 1 }
-        }
-    }
-
-    fun importLyrics(song: Song, uri: Uri) {
-        viewModelScope.launch {
-            val text = withContext(Dispatchers.IO) {
-                try {
-                    ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-                } catch (e: Exception) {
-                    null
-                }
-            }
-            if (text.isNullOrBlank()) {
-                post("Couldn't read that file")
-            } else {
-                withContext(Dispatchers.IO) { LyricsStore.save(ctx, song.id, text) }
-                _lyricsVersion.update { it + 1 }
-                post("Lyrics imported")
-            }
-        }
-    }
-
-    fun removeLyrics(song: Song) {
-        viewModelScope.launch {
-            withContext(Dispatchers.IO) { LyricsStore.delete(ctx, song.id) }
-            _lyricsVersion.update { it + 1 }
-        }
-    }
+    suspend fun loadLyrics(song: Song, allowOnline: Boolean): Lyrics? = lyricsRepo.load(song, allowOnline)
+    fun findLyricsOnline(song: Song) = lyricsRepo.findOnline(song)
+    fun saveLyrics(song: Song, text: String) = lyricsRepo.save(song, text)
+    fun importLyrics(song: Song, uri: Uri) = lyricsRepo.import(song, uri)
+    fun removeLyrics(song: Song) = lyricsRepo.remove(song)
 
     // ================= backup & M3U =================
 
-    fun exportBackup(uri: Uri) {
-        viewModelScope.launch {
-            val ok = withContext(Dispatchers.IO) {
-                try {
-                    val byId = rawSongs.map { MetaStore.apply(it) }.associateBy { it.id }
-                    val settings = JSONObject()
-                        .put("accent", _accent.value)
-                        .put("animate", _animate.value)
-                        .put("fade", PlaybackExtras.fadeSeconds.value)
-                        .put("lyricsAuto", _lyricsAuto.value)
-                    val text = Backup.build(playlists.value, byId, LinkStore.all(), settings)
-                    ctx.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray()) } != null
-                } catch (e: Exception) {
-                    false
-                }
-            }
-            post(if (ok) "Backup saved" else "Couldn't save the backup")
-        }
-    }
-
-    fun importBackup(uri: Uri) {
-        viewModelScope.launch {
-            try {
-                val text = readText(uri) ?: throw IllegalStateException()
-                val (lists, settings) = Backup.parse(text)
-                var matched = 0
-                var total = 0
-                lists.forEach { pl ->
-                    val ids = matchTracks(pl.tracks)
-                    total += pl.tracks.size
-                    matched += ids.size
-                    val id = PlaylistStore.create(uniquePlaylistName(pl.name))
-                    PlaylistStore.addSongs(id, ids)
-                }
-                settings?.let {
-                    if (it.has("accent")) setAccent(it.optInt("accent", 0))
-                    if (it.has("animate")) setAnimateBackground(it.optBoolean("animate", true))
-                    if (it.has("fade")) setFade(it.optInt("fade", 0))
-                    if (it.has("lyricsAuto")) setLyricsAuto(it.optBoolean("lyricsAuto", false))
-                }
-                post("Restored ${lists.size} playlist(s) · matched $matched of $total tracks")
-            } catch (e: Exception) {
-                post("That file isn't a Stellar Disc backup")
-            }
-        }
-    }
-
-    fun exportM3u(playlistId: String, uri: Uri) {
-        viewModelScope.launch {
-            val p = playlists.value.firstOrNull { it.id == playlistId } ?: return@launch
-            val ok = withContext(Dispatchers.IO) {
-                try {
-                    val songs = p.songIds.mapNotNull { songById[it.toString()] }
-                    ctx.contentResolver.openOutputStream(uri, "wt")?.use { it.write(Backup.buildM3u(songs).toByteArray()) } != null
-                } catch (e: Exception) {
-                    false
-                }
-            }
-            post(if (ok) "Playlist exported" else "Couldn't export the playlist")
-        }
-    }
-
-    fun importM3u(uri: Uri, fileName: String?) {
-        viewModelScope.launch {
-            val text = readText(uri)
-            if (text == null) {
-                post("Couldn't read that file")
-                return@launch
-            }
-            val entries = Backup.parseM3u(text)
-            if (entries.isEmpty()) {
-                post("No tracks in that playlist file")
-                return@launch
-            }
-            val library = _songs.value
-            val byPath = library.filter { it.path.isNotBlank() }.associateBy { it.path }
-            val byFile = library.filter { it.path.isNotBlank() }.associateBy { it.path.substringAfterLast('/') }
-            val ids = ArrayList<Long>()
-            val unmatched = ArrayList<RemoteTrack>()
-            entries.forEachIndexed { i, e ->
-                val hit = byPath[e.path] ?: byFile[e.path.substringAfterLast('/').substringAfterLast('\\')]
-                if (hit != null) ids += hit.id else unmatched += RemoteTrack(i, e.title, e.artist, durationMs = e.durationMs)
-            }
-            ids += matchTracks(unmatched)
-            val name = fileName?.substringBeforeLast('.')?.ifBlank { null } ?: "Imported playlist"
-            val id = PlaylistStore.create(uniquePlaylistName(name))
-            PlaylistStore.addSongs(id, ids)
-            post("Imported \"$name\" · matched ${ids.size} of ${entries.size} tracks")
-        }
-    }
-
-    private suspend fun matchTracks(tracks: List<RemoteTrack>): List<Long> {
-        if (tracks.isEmpty()) return emptyList()
-        val matches = SongMatcher.check(ctx, _songs.value, tracks, LinkStore.all())
-        return matches.mapNotNull { if (it.kind != MatchKind.NEW) it.local?.id else null }
-    }
-
-    private fun uniquePlaylistName(name: String): String {
-        val existing = playlists.value.map { it.name }.toSet()
-        if (name !in existing) return name
-        var n = 2
-        while ("$name ($n)" in existing) n++
-        return "$name ($n)"
-    }
-
-    private suspend fun readText(uri: Uri): String? = withContext(Dispatchers.IO) {
-        try {
-            ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
-        } catch (e: Exception) {
-            null
-        }
-    }
+    fun exportBackup(uri: Uri) = transfer.exportBackup(uri)
+    fun importBackup(uri: Uri) = transfer.importBackup(uri)
+    fun exportM3u(playlistId: String, uri: Uri) = transfer.exportM3u(playlistId, uri)
+    fun importM3u(uri: Uri, fileName: String?) = transfer.importM3u(uri, fileName)
 
     // ================= uplink & sharing =================
 
@@ -806,56 +640,19 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun consumeSharedUrl() { _sharedUrl.value = null }
 
-    fun loadUplinkPrefs(): UplinkPrefs = UplinkPrefs(
-        format = runCatching { DlFormat.valueOf(prefs.getString(KEY_DL_FORMAT, DlFormat.MP3.name)!!) }.getOrDefault(DlFormat.MP3),
-        audioKbps = prefs.getInt(KEY_DL_KBPS, 320),
-        maxHeight = prefs.getInt(KEY_DL_HEIGHT, 1080),
-        wholePlaylist = prefs.getBoolean(KEY_DL_PLAYLIST, true),
-        embed = prefs.getBoolean(KEY_DL_EMBED, true),
-        queueWhenDone = prefs.getBoolean(KEY_DL_QUEUE, false),
-        subtitles = prefs.getBoolean(KEY_DL_SUBS, true),
-        subLangs = prefs.getString(KEY_DL_SUBLANGS, "en.*") ?: "en.*",
-        skipExisting = prefs.getBoolean(KEY_DL_SKIP, true),
-    )
+    fun loadUplinkPrefs(): UplinkPrefs = uplinkSettings.load()
 
     fun startDownload(options: DownloadOptions, remember: Boolean = true) {
-        if (remember) {
-            prefs.edit()
-                .putString(KEY_DL_FORMAT, options.format.name)
-                .putInt(KEY_DL_KBPS, options.audioKbps)
-                .putInt(KEY_DL_HEIGHT, options.maxHeight)
-                .putBoolean(KEY_DL_PLAYLIST, options.wholePlaylist)
-                .putBoolean(KEY_DL_EMBED, options.embed)
-                .putBoolean(KEY_DL_QUEUE, options.queueWhenDone)
-                .putBoolean(KEY_DL_SUBS, options.subtitles)
-                .putString(KEY_DL_SUBLANGS, options.subLangs)
-                .putBoolean(KEY_DL_SKIP, options.skipExisting)
-                .apply()
-        }
+        if (remember) uplinkSettings.save(options)
         UplinkManager.enqueue(ctx, options)
     }
 
     // ================= settings =================
 
-    fun setAccent(index: Int) {
-        _accent.value = index
-        prefs.edit().putInt(KEY_ACCENT, index).apply()
-    }
-
-    fun setAnimateBackground(on: Boolean) {
-        _animate.value = on
-        prefs.edit().putBoolean(KEY_ANIMATE, on).apply()
-    }
-
-    fun setLyricsAuto(on: Boolean) {
-        _lyricsAuto.value = on
-        prefs.edit().putBoolean(KEY_LYRICS_AUTO, on).apply()
-    }
-
-    fun setOnboarded() {
-        _onboarded.value = true
-        prefs.edit().putBoolean(KEY_ONBOARDED, true).apply()
-    }
+    fun setAccent(index: Int) = settings.setAccent(index)
+    fun setAnimateBackground(on: Boolean) = settings.setAnimate(on)
+    fun setLyricsAuto(on: Boolean) = settings.setLyricsAuto(on)
+    fun setOnboarded() = settings.setOnboarded()
 
     fun post(text: String) {
         _message.value = text
@@ -914,25 +711,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private companion object {
-        const val KEY_ACCENT = "accent"
-        const val KEY_ANIMATE = "animate_bg"
-        const val KEY_LYRICS_AUTO = "lyrics_auto"
-        const val KEY_ONBOARDED = "onboarded"
-        const val KEY_MODERN_HOME = "modern_home"
         const val KEY_AUDIO_ONLY = "audio_only"
-        const val KEY_BACKDROP = "player_backdrop"
-        const val KEY_HERO_MODE = "hero_mode"
-        const val KEY_CLEAR_VIEW = "clear_view"
         const val KEY_HIDDEN = "hidden_folders"
-        const val KEY_DL_FORMAT = "dl_format"
-        const val KEY_DL_KBPS = "dl_kbps"
-        const val KEY_DL_HEIGHT = "dl_height"
-        const val KEY_DL_PLAYLIST = "dl_playlist"
-        const val KEY_DL_EMBED = "dl_embed"
-        const val KEY_DL_QUEUE = "dl_queue"
-        const val KEY_DL_SUBS = "dl_subs"
-        const val KEY_DL_SUBLANGS = "dl_sublangs"
-        const val KEY_DL_SKIP = "dl_skip_existing"
     }
 }
 

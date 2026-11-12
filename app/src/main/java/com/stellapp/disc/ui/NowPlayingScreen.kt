@@ -1,7 +1,7 @@
 package com.stellapp.disc.ui
 
 import android.os.SystemClock
-import androidx.activity.compose.BackHandler
+import androidx.activity.compose.PredictiveBackHandler
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.LinearEasing
@@ -25,6 +25,9 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -45,6 +48,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Close
@@ -95,6 +99,13 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.semantics.CustomAccessibilityAction
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.customActions
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -113,6 +124,7 @@ import com.stellapp.disc.ui.theme.TextHi
 import com.stellapp.disc.ui.theme.TextLo
 import com.stellapp.disc.ui.theme.Void
 import com.stellapp.disc.ui.theme.accentGradient
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlin.math.PI
@@ -159,11 +171,32 @@ fun NowPlayingScreen(
         else -> "⏾ SLEEP"
     }
 
-    BackHandler(onBack = onClose)
+    // Predictive back: the player shrinks and slides with your back swipe, then closes.
+    var backProgress by remember { mutableFloatStateOf(0f) }
+    PredictiveBackHandler { progress ->
+        try {
+            progress.collect { backProgress = it.progress }
+            onClose()
+        } catch (e: CancellationException) {
+            backProgress = 0f
+            throw e
+        }
+    }
+    val haptics = LocalHapticFeedback.current
+    val config = LocalConfiguration.current
+    val wide = config.screenWidthDp > config.screenHeightDp
 
     Box(
         Modifier
             .fillMaxSize()
+            .graphicsLayer {
+                val p = backProgress
+                scaleX = 1f - 0.08f * p
+                scaleY = 1f - 0.08f * p
+                translationY = 60.dp.toPx() * p
+                shape = RoundedCornerShape((28 * p).dp)
+                clip = p > 0f
+            }
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
     ) {
         PlayerBackdrop(backdrop, animate = animate, playing = s.isPlaying, modifier = Modifier.fillMaxSize(), anchor = discAnchor)
@@ -222,14 +255,20 @@ fun NowPlayingScreen(
                 }
             }
             val hintAlpha by animateFloatAsState(if (showHint) 0.6f else 0f, tween(500), label = "hint")
-            Box(
-                Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
+            val trackLabel = song?.let { "Now playing ${it.title} by ${it.artist}. Swipe left or right to change track." } ?: "Nothing playing"
+            val centre: @Composable (Modifier) -> Unit = { placement -> Box(
+                placement
                     .onSizeChanged { centerWidth = it.width.toFloat().coerceAtLeast(1f) }
                     .onGloballyPositioned { c ->
                         val b = c.boundsInRoot()
-                        discAnchor = DiscAnchor(b.center, b.width * 0.86f * 0.40f)
+                        discAnchor = DiscAnchor(b.center, minOf(b.width, b.height) * 0.86f * 0.40f)
+                    }
+                    .semantics {
+                        contentDescription = trackLabel
+                        customActions = listOf(
+                            CustomAccessibilityAction("Next track") { vm.swipeTrack(true) },
+                            CustomAccessibilityAction("Previous track") { vm.swipeTrack(false) },
+                        )
                     }
                     .pointerInput(Unit) {
                         detectHorizontalDragGestures(
@@ -241,6 +280,7 @@ fun NowPlayingScreen(
                                         val dir = if (forward) -1f else 1f
                                         swipe.animateTo(dir * centerWidth, tween(150))
                                         if (vm.swipeTrack(forward)) {
+                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             swipe.snapTo(-dir * centerWidth)
                                             swipe.animateTo(0f, tween(280, easing = FastOutSlowInEasing))
                                         } else {
@@ -275,7 +315,10 @@ fun NowPlayingScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     when {
-                        song != null && showLyrics -> LyricsPanel(vm, song, s.positionMs, Modifier.fillMaxWidth().aspectRatio(0.9f))
+                        song != null && showLyrics -> LyricsPanel(
+                            vm, song, s.positionMs,
+                            Modifier.fillMaxWidth().then(if (wide) Modifier.fillMaxHeight(0.92f) else Modifier.aspectRatio(0.9f)),
+                        )
                         song?.isVideo == true && !audioOnly -> Box(
                             Modifier
                                 .fillMaxWidth()
@@ -295,7 +338,9 @@ fun NowPlayingScreen(
                                     .padding(horizontal = 6.dp, vertical = 3.dp),
                             )
                         }
-                        else -> StellarDiscCore(song, s.isPlaying, Modifier.fillMaxWidth(0.86f).aspectRatio(1f))
+                        else -> BoxWithConstraints(contentAlignment = Alignment.Center) {
+                            StellarDiscCore(song, s.isPlaying, Modifier.size(minOf(maxWidth, maxHeight) * 0.86f))
+                        }
                     }
                 }
                 Text(
@@ -309,7 +354,10 @@ fun NowPlayingScreen(
                         .padding(bottom = 8.dp)
                         .graphicsLayer { alpha = hintAlpha },
                 )
-            }
+            } }
+
+            // Title, chips, visualizer, seek bar and buttons.
+            val details: @Composable () -> Unit = { Column(horizontalAlignment = Alignment.CenterHorizontally) {
 
             Text(
                 song?.title ?: "NO SIGNAL",
@@ -378,8 +426,21 @@ fun NowPlayingScreen(
             }
 
             Spacer(Modifier.height(8.dp))
-            Controls(vm, s, primary, secondary)
+            Controls(vm, s, primary, secondary) { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove) }
             Spacer(Modifier.height(16.dp))
+            } }
+
+            if (wide) {
+                // Sideways phone or tablet: disc on the left, everything else on the right.
+                Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
+                    centre(Modifier.weight(1f).fillMaxHeight())
+                    Spacer(Modifier.width(20.dp))
+                    Box(Modifier.weight(1f).fillMaxHeight(), contentAlignment = Alignment.Center) { details() }
+                }
+            } else {
+                centre(Modifier.weight(1f).fillMaxWidth())
+                details()
+            }
         }
     }
 
@@ -419,7 +480,7 @@ fun NowPlayingScreen(
 }
 
 @Composable
-private fun Controls(vm: PlayerViewModel, s: PlayerState, primary: Color, secondary: Color) {
+private fun Controls(vm: PlayerViewModel, s: PlayerState, primary: Color, secondary: Color, tick: () -> Unit) {
     Row(
         Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -428,7 +489,7 @@ private fun Controls(vm: PlayerViewModel, s: PlayerState, primary: Color, second
         IconButton(onClick = vm::toggleShuffle) {
             Icon(Icons.Rounded.Shuffle, contentDescription = "Shuffle", tint = if (s.shuffle) primary else TextLo)
         }
-        IconButton(onClick = vm::previous, modifier = Modifier.size(56.dp)) {
+        IconButton(onClick = { tick(); vm.previous() }, modifier = Modifier.size(56.dp)) {
             Icon(Icons.Rounded.SkipPrevious, contentDescription = "Previous", tint = TextHi, modifier = Modifier.size(38.dp))
         }
         Box(
@@ -437,7 +498,10 @@ private fun Controls(vm: PlayerViewModel, s: PlayerState, primary: Color, second
                 .shadow(28.dp, CircleShape, ambientColor = primary, spotColor = primary)
                 .clip(CircleShape)
                 .background(Brush.linearGradient(accentGradient()))
-                .clickable { vm.togglePlay() },
+                .clickable(onClickLabel = if (s.isPlaying) "Pause" else "Play") {
+                    tick()
+                    vm.togglePlay()
+                },
             contentAlignment = Alignment.Center,
         ) {
             Icon(
@@ -447,7 +511,7 @@ private fun Controls(vm: PlayerViewModel, s: PlayerState, primary: Color, second
                 modifier = Modifier.size(42.dp),
             )
         }
-        IconButton(onClick = vm::next, modifier = Modifier.size(56.dp)) {
+        IconButton(onClick = { tick(); vm.next() }, modifier = Modifier.size(56.dp)) {
             Icon(Icons.Rounded.SkipNext, contentDescription = "Next", tint = TextHi, modifier = Modifier.size(38.dp))
         }
         IconButton(onClick = vm::cycleRepeat) {
