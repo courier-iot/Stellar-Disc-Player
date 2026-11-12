@@ -302,6 +302,7 @@ private fun displayName(context: android.content.Context, uri: Uri): String? = t
 }
 
 /** The equalizer and bass boost. */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun EqualizerScreen(animate: Boolean, onClose: () -> Unit) {
     val fx by AudioFx.state.collectAsStateWithLifecycle()
