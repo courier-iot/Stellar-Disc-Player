@@ -2,7 +2,7 @@
 
 A cyberpunk / deep-space music player for Android. It plays the music files stored on your phone.
 
-## Features (v2.5.0)
+## Features (v2.6.0)
 
 - **Modern home:** a top bar with the "under the hood" toggle on the left, the logo in the middle, and search and settings on the right. Below that:
   - **Regular picks:** a big hero card plus a double row of picks, learned from what you finish, skip and play at each time of day. Tap the small tab next to the heading to choose what the hero shows: Top pick, Most played, Playlist, Rare listen, Forgotten gem, Fresh arrival or Random.
@@ -15,7 +15,7 @@ A cyberpunk / deep-space music player for Android. It plays the music files stor
 - **Nightly yt-dlp** updates (optional) and **always-on yt-dlp options** applied to every download.
 - **Audio-only videos:** play videos as sound only to save battery (toggle in Now Playing or Settings).
 - **Library:** Songs, Albums and Artists tabs, search across title/artist/album, sort by A–Z, Newest or Artist, Play all and Shuffle all.
-- **Now Playing:** the Stellar Disc, a spinning neon record with the cover art as its label (or a glowing star when there's no art) and pulse rings that ripple with the music. **Swipe the disc** left or right to skip tracks. **Clear view** (◐ chip) fades the disc or video away so your backdrop fills the screen; tap the empty space to bring it back. A choice of 12 animated backdrops built into the app (Synthwave, Nebula, Warp drive, Aurora, Black hole, Ringworld, Neon city, Deep void, Spiral galaxy, Pulsar, Fighter cockpit, Freighter bridge), picked in Settings → Look. Animated spectrum bars, a seek bar, shuffle, and repeat (off / all / one).
+- **Now Playing:** the Stellar Disc, a spinning neon record with the cover art as its label (or a glowing star when there's no art) and pulse rings that ripple with the music. **Swipe the disc** left or right to skip tracks. **Clear view** (◐ chip) fades the disc or video away so your backdrop fills the screen; tap the empty space to bring it back. 22 backdrops picked in Settings → Look. **Photo scenes** (real NASA, ESA/Hubble and Unsplash images, each with a little motion added): Carina nebula, Spiral galaxy, Deep field, Saturn, Saturn close-up, Eclipse (lined up so the disc becomes the Moon), Primordial black holes, Warp drive (photo), ISS window, Neon city, Kabukicho, Night train, Tokyo from above. **Drawn scenes:** Synthwave, Moonwave, Black hole, Pulsar, Nebula, Aurora, Warp drive, Fighter cockpit. **Your photo:** use any picture from your gallery. Animated spectrum bars, a seek bar, shuffle, and repeat (off / all / one).
 - **Random rotation:** tap a single song (on Home, in search, in a playlist or the library) and it plays first, followed by a random shuffle of the rest of your music. ▶ PLAY / ⤨ SHUFFLE on a playlist still play just that playlist.
 - **Uplink engines power down:** yt-dlp and FFmpeg spool up (with a short spool-up screen) when you open Uplink and cool down (with a cool-down screen) when you leave, so outside Uplink only the player runs. Downloads still in progress keep the engines on until they finish.
 - **Queue:** a sheet showing the real play order (follows shuffle). Tap any track to jump to it.
@@ -109,6 +109,11 @@ Keep `stellardisc.jks` backed up somewhere safe and **never** commit it. If you 
 Change `appVersion` near the top of `app/build.gradle.kts` (format `vLARGE.MEDIUM.SMALL`). The version code is calculated from it, so Android always sees the new build as newer.
 
 ## Changelog
+
+### v2.6.0
+**Added:** 13 photo backdrops from real images (Carina nebula, Spiral galaxy, Deep field, Saturn, Saturn close-up, Eclipse, Primordial black holes, Warp drive photo, ISS window, Neon city, Kabukicho, Night train, Tokyo from above), each with subtle motion like slow drift, rain, glints or flicker. A "Your photo" backdrop that uses any picture from your gallery. A new drawn Moonwave scene. A Backdrop photos section in Credits & Support.
+**Removed:** the drawn Freighter bridge, Ringworld, Neon city, Deep void and Spiral galaxy scenes (replaced by the photo versions)
+**Changed:** Synthwave now has layered mountain ranges, a far-off skyline and the sun's reflection on the grid. Photo backdrops line up with the disc and get a soft shade at the top and bottom so the controls stay readable.
 
 ### v2.5.0
 **Added:** Clear view in Now Playing (fade the disc or video out to see the backdrop in full; tap to bring it back). Swipe the centre of Now Playing to change tracks. Uplink engines that spool up when you open Uplink and cool down when you leave, each with its own screen. 4 accent gradients: Obsidian Silver (with pure black), Crimson Ember, Glacier Comet and Rose Gold. 4 backdrops for 12 in total: Spiral galaxy, Pulsar, Fighter cockpit and Freighter bridge. Random rotation when you start from a single song.

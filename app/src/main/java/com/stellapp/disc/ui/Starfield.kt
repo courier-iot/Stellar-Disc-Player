@@ -184,12 +184,37 @@ private fun DrawScope.drawSynthGrid(primary: Color, secondary: Color, horizon: F
         }
     }
 
+    // Depth: a faint far-off skyline, then two mountain ranges sliding at different speeds,
+    // with haze between them.
+    val far = Random(41)
+    var bx = 0f
+    while (bx < w) {
+        val bw = w * (0.015f + far.nextFloat() * 0.03f)
+        val bh = h * (0.01f + far.nextFloat() * 0.04f)
+        drawRect(primary.copy(alpha = 0.10f), Offset(bx, horizon - bh), Size(bw, bh))
+        bx += bw + w * far.nextFloat() * 0.01f
+    }
+    drawRidge(horizon, h * 0.09f, 7, t * 4f, lerpColor(Color(0xFF1A0B3A), secondary, 0.18f), primary.copy(alpha = 0.35f), 9)
+    drawRect(
+        brush = Brush.verticalGradient(listOf(Color.Transparent, secondary.copy(alpha = 0.16f)), startY = horizon - h * 0.08f, endY = horizon),
+        topLeft = Offset(0f, horizon - h * 0.08f),
+        size = Size(w, h * 0.08f),
+    )
+    drawRidge(horizon, h * 0.05f, 19, t * 11f, Color(0xFF0B0518), secondary.copy(alpha = 0.55f), 7)
+
     // Floor.
     drawRect(
         brush = Brush.verticalGradient(listOf(Color(0xFF0A0618), Void), startY = horizon, endY = h),
         topLeft = Offset(0f, horizon),
         size = Size(w, h - horizon),
     )
+    // The sun's reflection rippling on the floor.
+    for (k in 0 until 16) {
+        val f = k / 16f
+        val yy = horizon + (h - horizon) * f * f + 2f
+        val rw = sunR * (1.2f - f * 0.5f) * (0.75f + 0.25f * sin(t * 2.5f + k * 1.1f))
+        drawRect(secondary.copy(alpha = 0.22f * (1f - f)), Offset(sunC.x - rw / 2, yy), Size(rw, (1f + f * 3f).dp.toPx()))
+    }
     val stroke = 1.dp.toPx()
     for (i in -14..14) {
         drawLine(
@@ -219,3 +244,30 @@ private fun DrawScope.drawSynthGrid(primary: Color, secondary: Color, horizon: F
 }
 
 private fun lerpWhite(c: Color) = androidx.compose.ui.graphics.lerp(c, Color.White, 0.35f)
+
+/** A mountain range along [base], scrolling sideways by [scroll] px and wrapping seamlessly. */
+private fun DrawScope.drawRidge(base: Float, amp: Float, seed: Int, scroll: Float, fill: Color, rim: Color, peaks: Int) {
+    val w = size.width
+    val r = Random(seed)
+    val heights = FloatArray(peaks) { r.nextFloat() }
+    val seg = w / (peaks / 2f) / 2f
+    val period = seg * peaks * 2
+    val off = scroll % period
+    val ridge = Path()
+    var k = 0
+    var x = -off
+    ridge.moveTo(x, base)
+    while (x < w + seg) {
+        val hv = heights[(k / 2) % peaks]
+        val y = if (k % 2 == 0) base - amp * (0.35f + 0.65f * hv) else base - amp * 0.12f * hv
+        ridge.lineTo(x, y)
+        k++
+        x = -off + k * seg
+    }
+    ridge.lineTo(x, base)
+    ridge.close()
+    drawPath(ridge, fill)
+    drawPath(ridge, rim, style = androidx.compose.ui.graphics.drawscope.Stroke(1.2f.dp.toPx()))
+}
+
+private fun lerpColor(a: Color, b: Color, f: Float) = androidx.compose.ui.graphics.lerp(a, b, f)

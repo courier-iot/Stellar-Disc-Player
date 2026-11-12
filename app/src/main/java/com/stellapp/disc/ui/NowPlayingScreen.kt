@@ -84,6 +84,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -140,6 +142,8 @@ fun NowPlayingScreen(
     val secondary = MaterialTheme.colorScheme.secondary
     var sheet by remember { mutableStateOf(NpSheet.NONE) }
     var showLyrics by rememberSaveable { mutableStateOf(false) }
+    // Where the disc sits, so photo backdrops (like the eclipse) can line up with it.
+    var discAnchor by remember { mutableStateOf<DiscAnchor?>(null) }
 
     // Countdown text for the sleep chip.
     var now by remember { mutableLongStateOf(SystemClock.elapsedRealtime()) }
@@ -162,7 +166,7 @@ fun NowPlayingScreen(
             .fillMaxSize()
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
     ) {
-        PlayerBackdrop(backdrop, animate = animate, playing = s.isPlaying, modifier = Modifier.fillMaxSize())
+        PlayerBackdrop(backdrop, animate = animate, playing = s.isPlaying, modifier = Modifier.fillMaxSize(), anchor = discAnchor)
 
         Column(
             Modifier
@@ -223,6 +227,10 @@ fun NowPlayingScreen(
                     .weight(1f)
                     .fillMaxWidth()
                     .onSizeChanged { centerWidth = it.width.toFloat().coerceAtLeast(1f) }
+                    .onGloballyPositioned { c ->
+                        val b = c.boundsInRoot()
+                        discAnchor = DiscAnchor(b.center, b.width * 0.86f * 0.40f)
+                    }
                     .pointerInput(Unit) {
                         detectHorizontalDragGestures(
                             onDragEnd = {

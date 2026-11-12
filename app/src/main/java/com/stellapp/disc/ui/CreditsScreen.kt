@@ -59,6 +59,21 @@ private val CREDITS = listOf(
     Credit("LRCLIB", "Online lyrics (only when you ask)", "Free API", "https://lrclib.net"),
 )
 
+private val BACKDROP_CREDITS = listOf(
+    Credit("Carina nebula", "NASA, ESA, N. Smith (UC Berkeley) & the Hubble Heritage Team", "Public domain", "https://science.nasa.gov/mission/hubble/"),
+    Credit("Spiral galaxy", "ESA/Hubble & NASA", "CC BY 4.0", "https://esahubble.org/images/"),
+    Credit("Deep field", "NASA, ESA, S. Beckwith (STScI) & the HUDF Team", "Public domain", "https://science.nasa.gov/mission/hubble/"),
+    Credit("Saturn & Saturn close-up", "NASA/JPL-Caltech/Space Science Institute (PIA17172)", "Public domain", "https://photojournal.jpl.nasa.gov/catalog/PIA17172"),
+    Credit("Primordial black holes", "NASA's Goddard Space Flight Center", "Public domain", "https://svs.gsfc.nasa.gov/14524"),
+    Credit("ISS window", "NASA, via Unsplash", "Unsplash License", "https://unsplash.com/photos/space-shuttle-view-outside-the-earth-CpHNKNRwXps"),
+    Credit("Eclipse", "Tyler van der Hoeven, via Unsplash", "Unsplash License", "https://unsplash.com/photos/solar-eclipse-with-diamond-ring-effect-_ok8uVzL2gI"),
+    Credit("Warp drive (photo)", "Casey Horner, via Unsplash", "Unsplash License", "https://unsplash.com/photos/timelapse-photography-of-warped-lines-RmoWqDCqN2E"),
+    Credit("Neon city", "Valentin Beauvais, via Unsplash", "Unsplash License", "https://unsplash.com/photos/wet-street-at-night-in-tokyo-yVUQlyRlJSw"),
+    Credit("Tokyo from above", "Pawel Nolbert, via Unsplash", "Unsplash License", "https://unsplash.com/photos/timelapse-photography-of-vehicles-and-buildings-4u2U8EO9OzY"),
+    Credit("Night train", "Andre Benz, via Unsplash", "Unsplash License", "https://unsplash.com/photos/narrow-japanese-street-at-night-qi2hmCwlhcE"),
+    Credit("Kabukicho", "Sérgio Rola, via Unsplash", "Unsplash License", "https://unsplash.com/photos/roadway-beside-commercial-buildings-bVM7IO7pt7s"),
+)
+
 @Composable
 fun CreditsScreen(animate: Boolean, onClose: () -> Unit, onUpdateFound: (com.stellapp.disc.UpdateInfo) -> Unit = {}) {
     val context = LocalContext.current
@@ -164,6 +179,24 @@ fun CreditsScreen(animate: Boolean, onClose: () -> Unit, onUpdateFound: (com.ste
                 InfoPanel("CREDITS", secondary) {
                     Body("Stellar Disc is built on these open-source projects. Tap one to visit it.")
                     CREDITS.forEach { c ->
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { openUrl(context, c.url) }
+                                .padding(vertical = 8.dp)
+                        ) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(c.name, color = TextHi, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+                                Text(c.license, color = TextLo, fontFamily = Mono, fontSize = 11.sp)
+                            }
+                            Text(c.role, color = TextLo, fontSize = 12.sp)
+                        }
+                    }
+                }
+
+                InfoPanel("BACKDROP PHOTOS", secondary) {
+                    Body("The photo backdrops are real images, used under the licences below. Tap one to see the original.")
+                    BACKDROP_CREDITS.forEach { c ->
                         Column(
                             Modifier
                                 .fillMaxWidth()

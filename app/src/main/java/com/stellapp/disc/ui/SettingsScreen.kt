@@ -7,6 +7,7 @@ import android.os.Build
 import android.provider.OpenableColumns
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -38,6 +39,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -96,6 +98,24 @@ fun SettingsScreen(
     val backdrop by vm.backdrop.collectAsStateWithLifecycle()
     val nightly by vm.nightly.collectAsStateWithLifecycle()
     var globalOpts by remember { mutableStateOf(vm.ytdlpGlobalOptions()) }
+    val customVersion by CustomBackdrop.version.collectAsStateWithLifecycle()
+    LaunchedEffect(Unit) { CustomBackdrop.refresh(context) }
+    val backdropPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                vm.post("Setting up your backdrop…")
+                if (CustomBackdrop.import(context, uri)) {
+                    vm.setBackdrop(Backdrop.CUSTOM)
+                    vm.post("Your photo is now the player backdrop")
+                } else {
+                    vm.post("Couldn't use that image")
+                }
+            }
+        }
+    }
+    val pickBackdropPhoto = {
+        backdropPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly))
+    }
     val cookiePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { vm.importYtCookies(it) }
     }
@@ -171,7 +191,9 @@ fun SettingsScreen(
                             Column(
                                 Modifier
                                     .clip(SmallCut)
-                                    .clickable { vm.setBackdrop(b) }
+                                    .clickable {
+                                        if (b == Backdrop.CUSTOM && (customVersion <= 0L || picked)) pickBackdropPhoto() else vm.setBackdrop(b)
+                                    }
                                     .padding(2.dp),
                                 horizontalAlignment = Alignment.CenterHorizontally,
                             ) {
@@ -181,7 +203,7 @@ fun SettingsScreen(
                                         .clip(SmallCut)
                                         .border(if (picked) 2.dp else 1.dp, if (picked) MaterialTheme.colorScheme.primary else TextLo.copy(alpha = 0.3f), SmallCut)
                                 ) {
-                                    PlayerBackdrop(b, animate = picked && animate, playing = true, modifier = Modifier.fillMaxSize())
+                                    PlayerBackdrop(b, animate = picked && animate, playing = true, modifier = Modifier.fillMaxSize(), thumbnail = true)
                                 }
                                 Text(
                                     b.label.uppercase(),
@@ -193,6 +215,12 @@ fun SettingsScreen(
                             }
                         }
                     }
+                    Text(
+                        if (backdrop == Backdrop.CUSTOM) "Tap YOUR PHOTO again to pick a different picture." else "Photo scenes are real images (credits in Credits & Support). YOUR PHOTO uses any picture from your gallery.",
+                        color = TextLo,
+                        fontSize = 11.sp,
+                        modifier = Modifier.padding(top = 8.dp),
+                    )
                     ToggleRow("Animated starfield", "Turn off to save battery", animate) { vm.setAnimateBackground(it) }
                     ToggleRow("Modern home", "Off shows the \"under the hood\" library view", modernHome) { vm.setModernHome(it) }
                 }
