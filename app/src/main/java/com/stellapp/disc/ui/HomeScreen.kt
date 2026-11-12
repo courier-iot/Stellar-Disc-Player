@@ -256,11 +256,15 @@ fun HomeScreen(
             }
             if (hero == null) {
                 item(key = "picks-empty") {
-                    Text(
-                        if (loading) "Scanning your library…" else "No music yet. Pull some in with Uplink or Swap.",
-                        color = TextLo,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                    )
+                    if (loading) {
+                        Text("Scanning your library…", color = TextLo, modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp))
+                    } else {
+                        EmptyState(
+                            "◎", "NO MUSIC YET",
+                            "Put music files in your phone's Music folder, or pull some in with Uplink or Swap.",
+                            actionLabel = "⇣ OPEN UPLINK", onAction = onOpenUplink,
+                        )
+                    }
                 }
             } else {
                 item(key = "hero") {
@@ -680,14 +684,13 @@ fun GroupPage(vm: PlayerViewModel, group: SongGroup, animate: Boolean, onClose: 
                 if (group.kind != GroupKind.PLAYLIST && list.isNotEmpty()) NeonChip("+ SAVE AS PLAYLIST", false) { saving = true }
             }
             if (list.isEmpty()) {
-                Text(
-                    "Nothing here yet.",
-                    color = TextLo,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(32.dp),
-                )
+                when {
+                    group.key == "smart:favourites" ->
+                        EmptyState("♡", "NO FAVOURITES YET", "Tap ♥ in Now Playing, the notification or the widget, and the song lands here.")
+                    group.kind == GroupKind.PLAYLIST ->
+                        EmptyState("◌", "EMPTY ORBIT", "Long-press any track and pick this playlist, or send Uplink downloads here.")
+                    else -> EmptyState("✧", "NOTHING HERE YET", "Play some music and this fills up.")
+                }
             }
             LazyColumn(Modifier.weight(1f), contentPadding = PaddingValues(bottom = 12.dp)) {
                 itemsIndexed(list, key = { _, s -> s.id }) { i, s ->

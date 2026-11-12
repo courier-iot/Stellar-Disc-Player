@@ -479,6 +479,11 @@ fun UplinkScreen(
                         }
                     }
                     jobs.asReversed().forEach { JobCard(it) }
+                } else {
+                    EmptyState(
+                        "⇣", "NO TRANSMISSIONS YET",
+                        "Paste a link above, or share one to Stellar Disc from any app. Playlists and single tracks are spotted automatically.",
+                    )
                 }
                 Spacer(Modifier.height(24.dp))
             }

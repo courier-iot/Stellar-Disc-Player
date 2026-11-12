@@ -2,7 +2,7 @@
 
 A cyberpunk / deep-space music player for Android. It plays the music files stored on your phone.
 
-## Features (v2.9.0)
+## Features (v3.0.0)
 
 - **Modern home:** a top bar with the "under the hood" toggle on the left, the logo in the middle, and search and settings on the right. Below that:
   - **Regular picks:** a big hero card plus a double row of picks, learned from what you finish, skip and play at each time of day. Tap the small tab next to the heading to choose what the hero shows: Top pick, Most played, Playlist, Rare listen, Forgotten gem, Fresh arrival or Random.
@@ -27,6 +27,11 @@ A cyberpunk / deep-space music player for Android. It plays the music files stor
 - **Favourites:** heart a song in Now Playing or its menu; they collect in a ♥ Favourites playlist on Home and in the library.
 - **Volume levelling** (Android 9+) evens out quiet and loud tracks. **Long tracks** (20 min+) remember where you stopped. **Bluetooth auto-play** when headphones or the car connect (optional).
 - **Undo** after removing something from the queue or a playlist, or deleting a playlist. Deleted files go to the phone's trash on Android 11+.
+- **Notification & lock screen:** ♥ favourite and shuffle buttons next to the usual controls.
+- **Resizable widget:** small (art and play), wide (the classic strip with ♥) and large (big art and full controls).
+- **Pure black** (Settings → Look) for true-black backgrounds on OLED screens.
+- **A–Z rail** on the Songs list for fast scrolling (A–Z and Artist sorts).
+- **Gestures & tips** in Settings lists every swipe and shortcut. A launch screen with the disc and a themed (monochrome) icon for Android 13+.
 - **Select several songs** in the library to play, queue, favourite, add to a playlist or delete together.
 - **Listening stats:** top songs and artists, hours listened and when you listen (Settings → Library).
 - **Gestures:** swipe the disc left/right to skip, down to close Now Playing, up for lyrics; double-tap to play/pause, long-press for the queue; slide the right edge for volume; swipe the mini player left/right to skip or up to open it.
@@ -124,6 +129,11 @@ Keep `stellardisc.jks` backed up somewhere safe and **never** commit it. If you 
 Change `appVersion` near the top of `app/build.gradle.kts` (format `vLARGE.MEDIUM.SMALL`). The version code is calculated from it, so Android always sees the new build as newer.
 
 ## Changelog
+
+### v3.0.0
+**Added:** ♥ and shuffle buttons on the media notification and lock screen. A resizable widget (small, wide, large) with a ♥ button. Pure black backgrounds for OLED. An A–Z fast-scroll rail on the Songs list. A Gestures & tips page in Settings. A branded launch screen and a themed monochrome icon.
+**Removed:** nothing
+**Changed:** proper empty screens for no music, playlists, favourites and downloads. The welcome tour covers swipes and favourites. Fullscreen video keeps a single picture after rotating (the Now Playing video view hands over instead of leaving a frozen frame).
 
 ### v2.9.0
 **Added:** encrypted Swap transfers (key only in the QR code). Backups of favourites, pins, play counts, listening history, lyrics, tag edits and source links, matched by song. A strict yt-dlp options toggle and a solver-from-GitHub fallback toggle. 16 KB page support for QuickJS, plus a build check that lists which native libraries are 16 KB ready and a notice when a newer downloader library is out. Plain-language messages when the downloader can't start.

@@ -9,7 +9,13 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
+import androidx.media3.session.SessionCommand
+import androidx.media3.session.SessionResult
+import com.google.common.util.concurrent.Futures
+import com.google.common.util.concurrent.ListenableFuture
+import com.stellapp.disc.data.FavStore
 import androidx.media3.session.MediaSessionService
 import com.stellapp.disc.data.ListenKind
 import com.stellapp.disc.data.TasteStore
@@ -94,7 +100,11 @@ class PlaybackService : MediaSessionService() {
         )
         session = MediaSession.Builder(this, player)
             .setSessionActivity(openApp)
+            .setCallback(SessionCallback())
+            .setCustomLayout(buttons(player))
             .build()
+        // Keep the ♥ in step when you favourite from the app or the widget.
+        scope.launch { FavStore.ids.collect { refreshButtons() } }
 
         AudioFx.attach(player.audioSessionId)
         PlaybackExtras.attach(player)
@@ -150,6 +160,9 @@ class PlaybackService : MediaSessionService() {
                 }
                 if (events.containsAny(Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_IS_PLAYING_CHANGED, Player.EVENT_MEDIA_METADATA_CHANGED)) {
                     WidgetUpdater.push(this@PlaybackService, p)
+                }
+                if (events.containsAny(Player.EVENT_MEDIA_ITEM_TRANSITION, Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED)) {
+                    refreshButtons()
                 }
             }
         })
@@ -231,6 +244,69 @@ class PlaybackService : MediaSessionService() {
         audioDeviceCallback = cb
     }
 
+    // ================= notification & lock-screen buttons =================
+
+    /** The current song's library id, or null for streams and nothing playing. */
+    private fun favouriteId(p: Player): Long? {
+        val item = p.currentMediaItem ?: return null
+        val scheme = item.localConfiguration?.uri?.scheme
+        if (scheme == "http" || scheme == "https") return null
+        return item.mediaId.toLongOrNull()?.takeIf { it >= 0 }
+    }
+
+    private fun buttons(p: Player): List<CommandButton> {
+        val favId = favouriteId(p)
+        val fav = favId != null && FavStore.isFav(favId)
+        val list = mutableListOf<CommandButton>()
+        if (favId != null) {
+            list += CommandButton.Builder()
+                .setDisplayName(if (fav) "Remove from favourites" else "Add to favourites")
+                .setIconResId(if (fav) R.drawable.ic_n_fav else R.drawable.ic_n_fav_off)
+                .setSessionCommand(CMD_FAV)
+                .build()
+        }
+        list += CommandButton.Builder()
+            .setDisplayName(if (p.shuffleModeEnabled) "Shuffle off" else "Shuffle on")
+            .setIconResId(if (p.shuffleModeEnabled) R.drawable.ic_n_shuffle_on else R.drawable.ic_n_shuffle_off)
+            .setSessionCommand(CMD_SHUFFLE)
+            .build()
+        return list
+    }
+
+    private fun refreshButtons() {
+        val s = session ?: return
+        s.setCustomLayout(buttons(s.player))
+        WidgetUpdater.push(this, s.player)
+    }
+
+    private inner class SessionCallback : MediaSession.Callback {
+        override fun onConnect(session: MediaSession, controller: MediaSession.ControllerInfo): MediaSession.ConnectionResult {
+            val commands = MediaSession.ConnectionResult.DEFAULT_SESSION_COMMANDS.buildUpon()
+                .add(CMD_FAV)
+                .add(CMD_SHUFFLE)
+                .build()
+            return MediaSession.ConnectionResult.AcceptedResultBuilder(session)
+                .setAvailableSessionCommands(commands)
+                .build()
+        }
+
+        override fun onCustomCommand(
+            session: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            customCommand: SessionCommand,
+            args: android.os.Bundle,
+        ): ListenableFuture<SessionResult> {
+            val p = session.player
+            when (customCommand.customAction) {
+                ACTION_FAV -> favouriteId(p)?.let { FavStore.toggle(it) }
+                ACTION_SHUFFLE -> p.shuffleModeEnabled = !p.shuffleModeEnabled
+                else -> return Futures.immediateFuture(SessionResult(SessionResult.RESULT_ERROR_NOT_SUPPORTED))
+            }
+            refreshButtons()
+            return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -239,6 +315,13 @@ class PlaybackService : MediaSessionService() {
         if (player == null || !player.playWhenReady || player.mediaItemCount == 0) {
             stopSelf()
         }
+    }
+
+    companion object {
+        const val ACTION_FAV = "com.stellapp.disc.FAVOURITE"
+        const val ACTION_SHUFFLE = "com.stellapp.disc.SHUFFLE"
+        private val CMD_FAV = SessionCommand(ACTION_FAV, android.os.Bundle.EMPTY)
+        private val CMD_SHUFFLE = SessionCommand(ACTION_SHUFFLE, android.os.Bundle.EMPTY)
     }
 
     override fun onDestroy() {

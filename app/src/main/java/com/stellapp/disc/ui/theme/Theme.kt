@@ -5,10 +5,21 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 
-val Void = Color(0xFF05040D)
+/** App-wide look switches that plain colour values depend on. Compose state, so changes redraw. */
+object ThemeState {
+    var pureBlack by mutableStateOf(false)
+}
+
+private val DeepSpace = Color(0xFF05040D)
+
+/** The app background: deep space, or true black (#000) with the OLED option on. */
+val Void: Color get() = if (ThemeState.pureBlack) Color.Black else DeepSpace
 val PanelSolid = Color(0xFF0E0B1F)
 val Panel = Color(0xCC0E0B1F)
 val TextHi = Color(0xFFE8EAFF)

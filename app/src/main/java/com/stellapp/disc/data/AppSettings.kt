@@ -3,6 +3,7 @@ package com.stellapp.disc.data
 import android.content.SharedPreferences
 import com.stellapp.disc.HeroMode
 import com.stellapp.disc.ui.Backdrop
+import com.stellapp.disc.ui.theme.ThemeState
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -42,6 +43,21 @@ class AppSettings(private val prefs: SharedPreferences) {
     private val _btAutoplay = MutableStateFlow(prefs.getBoolean(KEY_BT_AUTOPLAY, false))
     /** Start playing when Bluetooth audio connects. Read by the playback service. */
     val btAutoplay: StateFlow<Boolean> = _btAutoplay.asStateFlow()
+
+    private val _pureBlack = MutableStateFlow(prefs.getBoolean(KEY_PURE_BLACK, false))
+    /** True-black backgrounds for OLED screens. */
+    val pureBlack: StateFlow<Boolean> = _pureBlack.asStateFlow()
+
+    init {
+        // The theme colours read this directly, so the very first frame is already right.
+        ThemeState.pureBlack = _pureBlack.value
+    }
+
+    fun setPureBlack(on: Boolean) {
+        _pureBlack.value = on
+        ThemeState.pureBlack = on
+        prefs.edit().putBoolean(KEY_PURE_BLACK, on).apply()
+    }
 
     fun setBtAutoplay(on: Boolean) {
         _btAutoplay.value = on
@@ -98,6 +114,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         .put("clearView", _clearView.value)
         .put("heroMode", _heroMode.value.name)
         .put("btAutoplay", _btAutoplay.value)
+        .put("pureBlack", _pureBlack.value)
 
     /** Applies whatever a backup contains (older backups simply have fewer keys). */
     fun restore(o: JSONObject) {
@@ -109,6 +126,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         if (o.has("clearView")) setClearView(o.optBoolean("clearView", false))
         if (o.has("heroMode")) runCatching { setHeroMode(HeroMode.valueOf(o.optString("heroMode"))) }
         if (o.has("btAutoplay")) setBtAutoplay(o.optBoolean("btAutoplay", false))
+        if (o.has("pureBlack")) setPureBlack(o.optBoolean("pureBlack", false))
     }
 
     private companion object {
@@ -121,5 +139,6 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_HERO_MODE = "hero_mode"
         const val KEY_CLEAR_VIEW = "clear_view"
         const val KEY_BT_AUTOPLAY = "bt_autoplay"
+        const val KEY_PURE_BLACK = "pure_black"
     }
 }

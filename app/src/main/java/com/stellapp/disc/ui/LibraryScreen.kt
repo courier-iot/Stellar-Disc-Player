@@ -1,5 +1,14 @@
 package com.stellapp.disc.ui
 
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import kotlinx.coroutines.launch
 import android.Manifest
 import android.app.Activity
 import android.app.RecoverableSecurityException
@@ -41,6 +50,7 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
@@ -364,8 +374,11 @@ fun LibraryScreen(
         Box(Modifier.weight(1f)) {
             when {
                 group != null && group.songs.isEmpty() && group.kind == GroupKind.PLAYLIST ->
-                    CenterMessage("EMPTY ORBIT\n\nLong-press any track and pick this playlist, or send Uplink downloads here.")
-                group != null && group.songs.isEmpty() -> CenterMessage("NOTHING HERE YET\n\nPlay some music and this fills up.")
+                    CenterEmpty { EmptyState("◌", "EMPTY ORBIT", "Long-press any track and pick this playlist, or send Uplink downloads here.") }
+                group != null && group.songs.isEmpty() && group.key == "smart:favourites" ->
+                    CenterEmpty { EmptyState("♡", "NO FAVOURITES YET", "Tap ♥ in Now Playing, the notification or the widget, and the song lands here.") }
+                group != null && group.songs.isEmpty() ->
+                    CenterEmpty { EmptyState("✧", "NOTHING HERE YET", "Play some music and this fills up.") }
                 group != null -> SongList(
                     songs = group.songs,
                     currentId = currentId,
@@ -398,7 +411,13 @@ fun LibraryScreen(
                     onLongPress = { s -> openMenu(s, null) },
                 )
                 loading && songs.isEmpty() -> CenterMessage("SCANNING SECTORS…", showSpinner = true)
-                music.isEmpty() -> CenterMessage("NO SIGNALS FOUND\n\nPut music files in your phone's Music folder, or pull some in with Uplink or Swap.")
+                music.isEmpty() -> CenterEmpty {
+                    EmptyState(
+                        "◎", "NO SIGNALS FOUND",
+                        "Put music files in your phone's Music folder, or pull some in with Uplink or Swap.",
+                        actionLabel = "⇣ OPEN UPLINK", onAction = onOpenUplink,
+                    )
+                }
                 tab == LibTab.SONGS -> SongList(
                     songs = filtered,
                     currentId = currentId,
@@ -407,6 +426,11 @@ fun LibraryScreen(
                     onLongPress = { s -> openMenu(s, null) },
                     selected = selected,
                     onToggle = toggleSelect,
+                    indexBy = when (sort) {
+                        SortMode.TITLE -> Song::title
+                        SortMode.ARTIST -> Song::artist
+                        SortMode.RECENT -> null
+                    },
                     header = {
                         Row(
                             Modifier
@@ -603,11 +627,27 @@ private fun SongList(
     /** Non-null while picking several songs: taps then tick songs instead of playing them. */
     selected: Set<Long>? = null,
     onToggle: (Song) -> Unit = {},
+    /** The text the list is sorted by (title or artist). Turns on the A–Z fast-scroll rail. */
+    indexBy: ((Song) -> String)? = null,
 ) {
     val primary = MaterialTheme.colorScheme.primary
+    val listState = rememberLazyListState()
+    val headerItems = if (header != null) 1 else 0
+    // First list position for each letter, for the rail. Only worth it on longer lists.
+    val firstIndex = remember(songs, indexBy) {
+        if (indexBy == null || songs.size < 30) {
+            emptyMap()
+        } else {
+            val m = LinkedHashMap<Char, Int>()
+            songs.forEachIndexed { i, song -> m.getOrPut(railLetter(indexBy(song))) { i } }
+            m
+        }
+    }
+    Box(Modifier.fillMaxSize()) {
     LazyColumn(
         Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(bottom = 12.dp),
+        state = listState,
+        contentPadding = PaddingValues(bottom = 12.dp, end = if (firstIndex.isEmpty()) 0.dp else 22.dp),
     ) {
         if (header != null) item(key = "header") { header() }
         itemsIndexed(songs, key = { _, s -> s.id }) { i, song ->
@@ -645,6 +685,102 @@ private fun SongList(
             }
         }
     }
+    if (firstIndex.isNotEmpty()) {
+        LetterRail(
+            firstIndex = firstIndex,
+            onJump = { i -> listState.scrollToItem(i + headerItems) },
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(vertical = 8.dp),
+        )
+    }
+    }
+}
+
+private const val RAIL = "#ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+private fun railLetter(text: String): Char {
+    val c = text.trimStart().firstOrNull()?.uppercaseChar() ?: return '#'
+    return if (c in 'A'..'Z') c else '#'
+}
+
+/** Drag or tap down the right edge to jump through the list by letter. */
+@Composable
+private fun LetterRail(firstIndex: Map<Char, Int>, onJump: suspend (Int) -> Unit, modifier: Modifier = Modifier) {
+    val primary = MaterialTheme.colorScheme.primary
+    val scope = rememberCoroutineScope()
+    val haptics = androidx.compose.ui.platform.LocalHapticFeedback.current
+    var active by remember { mutableStateOf<Char?>(null) }
+    var railHeight by remember { mutableStateOf(1) }
+
+    fun pick(y: Float) {
+        val slot = ((y / railHeight) * RAIL.length).toInt().coerceIn(0, RAIL.length - 1)
+        val letter = RAIL[slot]
+        if (letter == active) return
+        active = letter
+        // A letter with no songs jumps to the next one that has some (or the last before it).
+        val target = RAIL.drop(slot).firstNotNullOfOrNull { firstIndex[it] }
+            ?: RAIL.take(slot).reversed().firstNotNullOfOrNull { firstIndex[it] }
+            ?: return
+        haptics.performHapticFeedback(androidx.compose.ui.hapticfeedback.HapticFeedbackType.TextHandleMove)
+        scope.launch { onJump(target) }
+    }
+
+    Row(modifier, verticalAlignment = Alignment.CenterVertically) {
+        val shown = active
+        if (shown != null) {
+            Box(
+                Modifier
+                    .size(56.dp)
+                    .neonPanel(primary, glow = 12.dp, fill = PanelSolid),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(shown.toString(), color = primary, fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 28.sp)
+            }
+            Spacer(Modifier.width(10.dp))
+        }
+        Column(
+            Modifier
+                .width(22.dp)
+                .onSizeChanged { railHeight = it.height.coerceAtLeast(1) }
+                .semantics { contentDescription = "Jump to letter. Drag up or down." }
+                .pointerInput(firstIndex) {
+                    detectTapGestures(
+                        onPress = { o ->
+                            pick(o.y)
+                            tryAwaitRelease()
+                            active = null
+                        },
+                    )
+                }
+                .pointerInput(firstIndex) {
+                    detectVerticalDragGestures(
+                        onDragStart = { o -> pick(o.y) },
+                        onDragEnd = { active = null },
+                        onDragCancel = { active = null },
+                    ) { change, _ ->
+                        change.consume()
+                        pick(change.position.y)
+                    }
+                },
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            RAIL.forEach { c ->
+                Text(
+                    c.toString(),
+                    color = when {
+                        c == active -> primary
+                        c in firstIndex -> TextHi.copy(alpha = 0.8f)
+                        else -> TextLo.copy(alpha = 0.35f)
+                    },
+                    fontFamily = Mono,
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 10.sp,
+                    lineHeight = 12.sp,
+                )
+            }
+        }
+    }
 }
 
 @Composable
@@ -677,12 +813,7 @@ private fun PlaylistList(smart: List<SongGroup>, groups: List<SongGroup>, onCrea
         }
         if (groups.isEmpty()) {
             item(key = "empty") {
-                Text(
-                    "No playlists yet. Long-press any track to add it to one.",
-                    color = TextLo,
-                    fontSize = 13.sp,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-                )
+                EmptyState("☰", "NO PLAYLISTS YET", "Tap NEW PLAYLIST above, or long-press any track to start one.")
             }
         }
         items(groups, key = { it.key }) { g -> GroupRow(g, round = false) { onOpen(g) } }
@@ -807,6 +938,16 @@ private fun VideoGrid(
             }
         }
     }
+}
+
+@Composable
+private fun CenterEmpty(content: @Composable () -> Unit) {
+    Box(
+        Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState()),
+        contentAlignment = Alignment.Center,
+    ) { content() }
 }
 
 @Composable

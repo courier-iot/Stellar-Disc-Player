@@ -84,6 +84,7 @@ fun SettingsScreen(
     onUpdateFound: (com.stellapp.disc.UpdateInfo) -> Unit,
     onOpenYtSignIn: () -> Unit,
     onOpenStats: () -> Unit = {},
+    onOpenTips: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -102,6 +103,7 @@ fun SettingsScreen(
     var globalOpts by remember { mutableStateOf(vm.ytdlpGlobalOptions()) }
     val customVersion by CustomBackdrop.version.collectAsStateWithLifecycle()
     val btAutoplay by vm.btAutoplay.collectAsStateWithLifecycle()
+    val pureBlack by vm.pureBlack.collectAsStateWithLifecycle()
     val wifiOnly by vm.wifiOnly.collectAsStateWithLifecycle()
     val strictOptions by vm.strictOptions.collectAsStateWithLifecycle()
     val solverFromGithub by vm.solverFromGithub.collectAsStateWithLifecycle()
@@ -228,6 +230,7 @@ fun SettingsScreen(
                         fontSize = 11.sp,
                         modifier = Modifier.padding(top = 8.dp),
                     )
+                    ToggleRow("Pure black", "True-black backgrounds. Saves battery on OLED screens", pureBlack) { vm.setPureBlack(it) }
                     ToggleRow("Animated starfield", "Turn off to save battery", animate) { vm.setAnimateBackground(it) }
                     ToggleRow("Modern home", "Off shows the \"under the hood\" library view", modernHome) { vm.setModernHome(it) }
                 }
@@ -393,6 +396,7 @@ fun SettingsScreen(
                             }
                         }
                     }
+                    LinkRow("Gestures & tips", "Every swipe, tap and shortcut in one list", onOpenTips)
                     LinkRow("Credits & Support", "Responsible use, yt-dlp updates, crash reports, licences", onOpenCredits)
                     LinkRow("Show the welcome tour again", null) {
                         vm.post("The welcome tour shows on next launch")
@@ -564,9 +568,11 @@ private data class TourPage(val glyph: String, val title: String, val body: Stri
 
 private val TOUR = listOf(
     TourPage("◉", "WELCOME TO STELLAR//DISC", "A music player from deep space. Your songs, videos and playlists, all in one neon cockpit."),
+    TourPage("⇆", "SWIPE TO STEER", "Swipe the disc or the mini player to change songs. Double-tap the disc to pause, long-press it for the queue, swipe up for lyrics."),
+    TourPage("♥", "YOUR FAVOURITES", "Tap ♥ in the player, the notification or the widget. Favourites, playlists and mixes all live on the home screen."),
     TourPage("⇣", "UPLINK", "Paste or share a link from YouTube, SoundCloud, Bandcamp and 1,000+ sites to download it, or just stream it. Only grab what you have the rights to."),
     TourPage("⇄", "SWAP", "Share playlists with friends: scan a QR code on the same Wi-Fi, or send a link list anywhere. The song checker skips what you already have."),
-    TourPage("♪", "MAKE IT YOURS", "Lyrics, equalizer, sleep timer, a home screen widget, and accent colours in Settings. Next, Android will ask for access to your music."),
+    TourPage("♪", "MAKE IT YOURS", "Backdrops, accent colours, pure black, lyrics, equalizer and a resizable widget. Every gesture is in Settings → Gestures & tips. Next, Android will ask for access to your music."),
 )
 
 /** First-run tour. Permissions are asked right after it. */

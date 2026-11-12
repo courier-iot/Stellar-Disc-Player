@@ -1,0 +1,12 @@
+<resources>
+    <!-- Android 12+: the launch screen shows the disc icon on the app's dark space colour
+         instead of a plain flash. -->
+    <style name="Theme.StellarDisc" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/void_black</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowSplashScreenBackground">@color/void_black</item>
+        <item name="android:windowSplashScreenAnimatedIcon">@drawable/ic_launcher_foreground</item>
+        <item name="android:windowSplashScreenIconBackgroundColor">@color/launcher_bg</item>
+    </style>
+</resources>

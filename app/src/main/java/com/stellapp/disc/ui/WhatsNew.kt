@@ -3,6 +3,20 @@ package com.stellapp.disc.ui
 /** Shown once after each update. Keep the newest version first. */
 object WhatsNew {
     val notes: Map<String, String> = linkedMapOf(
+        "3.0.0" to """
+            ADDED
+            • ♥ and shuffle buttons on the media notification and lock screen
+            • The home screen widget resizes: small, wide and large, with a ♥ button
+            • Pure black backgrounds for OLED screens (Settings → Look)
+            • A–Z letter rail on the Songs list: drag it to jump (A–Z and Artist sorts)
+            • Settings → Gestures & tips lists every swipe and shortcut
+            • Launch screen with the disc, and a themed icon for Android 13+ home screens
+
+            CHANGED
+            • Friendlier screens when there's no music, playlists, favourites or downloads yet
+            • The welcome tour covers swipes and favourites
+            • Fullscreen video no longer shows a frozen second picture after rotating
+        """.trimIndent(),
         "2.9.0" to """
             ADDED
             • Swap transfers are encrypted; the key is only in the QR code (both phones need v2.9)

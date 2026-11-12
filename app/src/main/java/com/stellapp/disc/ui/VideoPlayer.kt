@@ -43,6 +43,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -78,22 +79,26 @@ import com.stellapp.disc.ui.theme.TextHi
 import com.stellapp.disc.ui.theme.TextLo
 import com.stellapp.disc.ui.theme.Void
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.update
 import kotlin.math.roundToInt
 
 /**
- * When one video view goes away, the others need to re-claim the picture,
- * otherwise the screen that's left would stay black.
+ * Only one video view may show the picture at a time. Two live views (Now Playing underneath
+ * fullscreen) fight over the same video after a rotation and leave a frozen frame poking
+ * through. The newest view on screen owns the picture; the others let go and hide.
  */
 private object VideoSurfaces {
-    val epoch = MutableStateFlow(0)
+    val stack = mutableStateListOf<Any>()
 }
 
 /** The video picture for [player]. Subtitles are drawn on top automatically. */
 @Composable
 fun VideoSurface(player: Player?, modifier: Modifier = Modifier, zoom: Boolean = false) {
-    val epoch by VideoSurfaces.epoch.collectAsState()
+    val me = remember { Any() }
+    DisposableEffect(me) {
+        VideoSurfaces.stack.add(me)
+        onDispose { VideoSurfaces.stack.remove(me) }
+    }
+    val active = VideoSurfaces.stack.lastOrNull() === me
     AndroidView(
         factory = { ctx ->
             PlayerView(ctx).apply {
@@ -103,17 +108,16 @@ fun VideoSurface(player: Player?, modifier: Modifier = Modifier, zoom: Boolean =
             }
         },
         update = { view ->
-            if (view.tag != epoch || view.player !== player) {
+            val want = if (active) player else null
+            if (view.player !== want) {
                 view.player = null
-                view.player = player
-                view.tag = epoch
+                view.player = want
             }
+            // Hiding the view also drops its surface, so nothing stale is left behind.
+            view.visibility = if (active) android.view.View.VISIBLE else android.view.View.INVISIBLE
             view.resizeMode = if (zoom) AspectRatioFrameLayout.RESIZE_MODE_ZOOM else AspectRatioFrameLayout.RESIZE_MODE_FIT
         },
-        onRelease = { view ->
-            view.player = null
-            VideoSurfaces.epoch.update { it + 1 }
-        },
+        onRelease = { view -> view.player = null },
         modifier = modifier,
     )
 }

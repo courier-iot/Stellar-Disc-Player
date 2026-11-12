@@ -117,6 +117,7 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     var showUplink by rememberSaveable { mutableStateOf(false) }
     var showCredits by rememberSaveable { mutableStateOf(false) }
     var showStats by rememberSaveable { mutableStateOf(false) }
+    var showTips by rememberSaveable { mutableStateOf(false) }
     var showSwap by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showEq by rememberSaveable { mutableStateOf(false) }
@@ -146,7 +147,7 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     // Only the screen on top animates: anything fully covered stops drawing, which saves battery.
     val animate = animateSetting && !inPip
     val playerUp = showPlayer && state.current != null
-    val toolUp = showUplink || showSwap || showShare || showSettings || showYtSignIn || showEq || showCredits || showStats
+    val toolUp = showUplink || showSwap || showShare || showSettings || showYtSignIn || showEq || showCredits || showStats || showTips
     val homeAnimate = animate && !(playerUp || showSearch || showGroup || toolUp || showVideo)
     val audioOnly by vm.audioOnly.collectAsStateWithLifecycle()
     // With "audio only" on, videos open in Now Playing instead of fullscreen.
@@ -338,13 +339,14 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
         Overlay(showSettings) {
             SettingsScreen(
                 vm = vm,
-                animate = animate && !(showEq || showCredits || showYtSignIn || showStats || showVideo),
+                animate = animate && !(showEq || showCredits || showYtSignIn || showStats || showTips || showVideo),
                 onClose = { showSettings = false },
                 onOpenEqualizer = { showEq = true },
                 onOpenCredits = { showCredits = true },
                 onUpdateFound = { update = it },
                 onOpenYtSignIn = { showYtSignIn = true },
                 onOpenStats = { showStats = true },
+                onOpenTips = { showTips = true },
             )
         }
 
@@ -358,6 +360,10 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
 
         Overlay(showStats) {
             StatsScreen(vm = vm, animate = animate && !showVideo, onClose = { showStats = false })
+        }
+
+        Overlay(showTips) {
+            TipsScreen(animate = animate && !showVideo, onClose = { showTips = false })
         }
 
         Overlay(showCredits) {

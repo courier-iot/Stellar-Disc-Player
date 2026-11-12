@@ -153,6 +153,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     val lyricsAuto: StateFlow<Boolean> = settings.lyricsAuto
     val onboarded: StateFlow<Boolean> = settings.onboarded
     val btAutoplay: StateFlow<Boolean> = settings.btAutoplay
+    val pureBlack: StateFlow<Boolean> = settings.pureBlack
     val favourites: StateFlow<List<Long>> = FavStore.ids
 
     private val _wifiOnly = MutableStateFlow(UplinkManager.wifiOnly(app))
@@ -661,6 +662,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setBtAutoplay(on: Boolean) = settings.setBtAutoplay(on)
+    fun setPureBlack(on: Boolean) = settings.setPureBlack(on)
 
     private val _strictOptions = MutableStateFlow(UplinkManager.strictOptions(app))
     val strictOptions: StateFlow<Boolean> = _strictOptions.asStateFlow()
