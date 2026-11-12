@@ -92,6 +92,7 @@ fun SettingsScreen(
     val ytSignedIn by vm.ytSignedIn.collectAsStateWithLifecycle()
     val audioOnly by vm.audioOnly.collectAsStateWithLifecycle()
     val modernHome by vm.modernHome.collectAsStateWithLifecycle()
+    val backdrop by vm.backdrop.collectAsStateWithLifecycle()
     val nightly by vm.nightly.collectAsStateWithLifecycle()
     var globalOpts by remember { mutableStateOf(vm.ytdlpGlobalOptions()) }
     val cookiePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
@@ -159,6 +160,35 @@ fun SettingsScreen(
                                         .then(if (i == accent) Modifier.border(2.dp, TextHi, CircleShape) else Modifier)
                                 )
                                 Text(a.name.substringBefore(" ").uppercase(), color = if (i == accent) a.primary else TextLo, fontFamily = Mono, fontSize = 9.sp)
+                            }
+                        }
+                    }
+                    Text("PLAYER BACKDROP", color = TextLo, fontFamily = Mono, fontSize = 11.sp, modifier = Modifier.padding(top = 14.dp, bottom = 8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Backdrop.entries.forEach { b ->
+                            val picked = b == backdrop
+                            Column(
+                                Modifier
+                                    .clip(SmallCut)
+                                    .clickable { vm.setBackdrop(b) }
+                                    .padding(2.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                            ) {
+                                Box(
+                                    Modifier
+                                        .size(width = 66.dp, height = 92.dp)
+                                        .clip(SmallCut)
+                                        .border(if (picked) 2.dp else 1.dp, if (picked) MaterialTheme.colorScheme.primary else TextLo.copy(alpha = 0.3f), SmallCut)
+                                ) {
+                                    PlayerBackdrop(b, animate = picked && animate, playing = true, modifier = Modifier.fillMaxSize())
+                                }
+                                Text(
+                                    b.label.uppercase(),
+                                    color = if (picked) MaterialTheme.colorScheme.primary else TextLo,
+                                    fontFamily = Mono,
+                                    fontSize = 9.sp,
+                                    modifier = Modifier.padding(top = 4.dp),
+                                )
                             }
                         }
                     }

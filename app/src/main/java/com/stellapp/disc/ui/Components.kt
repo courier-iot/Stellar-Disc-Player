@@ -117,26 +117,26 @@ fun PlanetPlaceholder(seed: Long, modifier: Modifier = Modifier) {
     val tilt = remember(seed) { -35f + 50f * mix }
     val body = lerp(primary, secondary, mix)
     Canvas(modifier.background(Brush.linearGradient(listOf(Color(0xFF1A1238), Void)))) {
-        val r = size.minDimension * 0.26f
-        drawCircle(
-            brush = Brush.radialGradient(
-                listOf(body, body.copy(alpha = 0.35f), Color.Transparent),
-                center = Offset(center.x - r * 0.3f, center.y - r * 0.3f),
-                radius = r * 1.6f,
-            ),
-            radius = r,
-            center = center,
-        )
-        rotate(tilt, pivot = center) {
-            drawOval(
-                color = lerp(secondary, primary, mix).copy(alpha = 0.85f),
-                topLeft = Offset(center.x - r * 1.7f, center.y - r * 0.42f),
-                size = Size(r * 3.4f, r * 0.84f),
-                style = Stroke(width = size.minDimension * 0.025f),
+        // A few stars, placed per album so every cover is a little different.
+        for (i in 0 until 14) {
+            val h = (seed * 7919 + i * 104729).let { if (it < 0) -it else it }
+            val x = (h % 1000) / 1000f * size.width
+            val y = ((h / 1000) % 1000) / 1000f * size.height
+            val big = i % 5 == 0
+            drawCircle(
+                color = (if (i % 3 == 0) secondary else Color.White).copy(alpha = if (big) 0.85f else 0.45f),
+                radius = size.minDimension * if (big) 0.012f else 0.006f,
+                center = Offset(x, y),
             )
         }
-        drawCircle(Color.White.copy(alpha = 0.7f), radius = size.minDimension * 0.012f, center = Offset(size.width * 0.18f, size.height * 0.22f))
-        drawCircle(Color.White.copy(alpha = 0.5f), radius = size.minDimension * 0.009f, center = Offset(size.width * 0.82f, size.height * 0.8f))
+        drawNeonPlanet(
+            center = center,
+            r = size.minDimension * 0.24f,
+            body = body,
+            accent = lerp(secondary, primary, mix),
+            tilt = tilt,
+            seed = seed,
+        )
     }
 }
 

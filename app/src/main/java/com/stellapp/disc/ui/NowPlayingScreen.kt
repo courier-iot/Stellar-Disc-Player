@@ -118,6 +118,7 @@ fun NowPlayingScreen(
     val sleepAt by PlaybackExtras.sleepEndsAt.collectAsStateWithLifecycle()
     val sleepEnd by PlaybackExtras.sleepEndOfTrack.collectAsStateWithLifecycle()
     val audioOnly by vm.audioOnly.collectAsStateWithLifecycle()
+    val backdrop by vm.backdrop.collectAsStateWithLifecycle()
     val song = s.current
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
@@ -145,7 +146,7 @@ fun NowPlayingScreen(
             .fillMaxSize()
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {}
     ) {
-        Starfield(Modifier.fillMaxSize(), animate = animate, grid = true, speed = if (s.isPlaying) 1.6f else 0.3f)
+        PlayerBackdrop(backdrop, animate = animate, playing = s.isPlaying, modifier = Modifier.fillMaxSize())
 
         Column(
             Modifier
@@ -240,6 +241,7 @@ fun NowPlayingScreen(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
+                NeonChip("✦ ${backdrop.label.uppercase()}", false) { vm.cycleBackdrop() }
                 NeonChip("LYRICS", showLyrics) { showLyrics = !showLyrics }
                 NeonChip(sleepLabel, sleepAt != null || sleepEnd) { sheet = NpSheet.SLEEP }
                 NeonChip("${s.speed}×", s.speed != 1f) { sheet = NpSheet.SPEED }

@@ -2,11 +2,11 @@
 
 A cyberpunk / deep-space music player for Android. It plays the music files stored on your phone.
 
-## Features (v2.3.0)
+## Features (v2.4.0)
 
 - **Modern home:** a top bar with the "under the hood" toggle on the left, the logo in the middle, and search and settings on the right. Below that:
-  - **Regular picks:** a big hero card plus a double row of picks, learned from what you finish, skip and play at each time of day.
-  - **Your playlists**, then **pinned playlists** and **pinned songs** (long-press a song or open a playlist to pin it).
+  - **Regular picks:** a big hero card plus a double row of picks, learned from what you finish, skip and play at each time of day. Tap the small tab next to the heading to choose what the hero shows: Top pick, Most played, Playlist, Rare listen, Forgotten gem, Fresh arrival or Random.
+  - **Your playlists** (the small "+ NEW" tab beside the heading makes one), then **pinned playlists** and **pinned songs** (long-press a song or open a playlist to pin it).
   - **Generated mixes:** Late night rotation, Morning starters, On repeat, Most listened to, Least listened to, Forgotten in time, Never played, Second chances, Fresh arrivals, genre mixes and an artist deep dive. Mixes can be saved as playlists.
 - **Under the hood:** the original library view, one tap away (and back).
 - **Search** across songs, artists, albums, playlists and phone videos.
@@ -15,7 +15,7 @@ A cyberpunk / deep-space music player for Android. It plays the music files stor
 - **Nightly yt-dlp** updates (optional) and **always-on yt-dlp options** applied to every download.
 - **Audio-only videos:** play videos as sound only to save battery (toggle in Now Playing or Settings).
 - **Library:** Songs, Albums and Artists tabs, search across title/artist/album, sort by A–Z, Newest or Artist, Play all and Shuffle all.
-- **Now Playing:** album art inside spinning neon orbit rings with a moon, a synthwave horizon with a scrolling neon grid and a rising planet, animated spectrum bars, a seek bar, shuffle, and repeat (off / all / one).
+- **Now Playing:** album art inside spinning neon orbit rings with a moon, a choice of 8 animated backdrops built into the app (Synthwave, Nebula, Warp drive, Aurora, Black hole, Ringworld, Neon city, Deep void; tap the ✦ chip to cycle or pick in Settings → Look), animated spectrum bars, a seek bar, shuffle, and repeat (off / all / one).
 - **Queue:** a sheet showing the real play order (follows shuffle). Tap any track to jump to it.
 - **Background playback:** keeps playing with the screen off or the app closed. Notification, lock-screen and Bluetooth/headphone controls work, and it pauses when headphones are unplugged.
 - **Mini player** with a progress line.
@@ -107,6 +107,11 @@ Keep `stellardisc.jks` backed up somewhere safe and **never** commit it. If you 
 Change `appVersion` near the top of `app/build.gradle.kts` (format `vLARGE.MEDIUM.SMALL`). The version code is calculated from it, so Android always sees the new build as newer.
 
 ## Changelog
+
+### v2.4.0
+**Added:** 8 animated player backdrops bundled in the app (Synthwave, Nebula, Warp drive, Aurora, Black hole, Ringworld, Neon city, Deep void), with a ✦ chip in Now Playing to cycle them and a preview picker in Settings → Look. A hero picker on Home: Top pick, Most played, Playlist, Rare listen, Forgotten gem, Fresh arrival or Random. Shooting stars, flaring bright stars and drifting nebula clouds in the starfield.
+**Removed:** the large "New playlist" card on Home
+**Changed:** "+ NEW" is now a small tab next to the Playlists heading. Planets are smoother, with rings that pass behind the planet and come round in front, plus cloud bands, a storm spot, a shadow side and a neon rim. The synthwave sun is now banded. The double row of picks no longer repeats the hero song.
 
 ### v2.3.0
 **Added:** a "Skip what I already have" option in Uplink (on by default), which uses yt-dlp's download archive to skip items you've already downloaded (tracked separately for audio and video, and forgotten when you delete the file), plus a post-download duplicate check that removes a new file if you already have the same song and still adds your existing copy to the target playlist. Delete from phone now works from Home, Search and the playlist and mix pages.

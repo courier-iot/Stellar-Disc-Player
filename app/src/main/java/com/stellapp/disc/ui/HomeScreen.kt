@@ -2,6 +2,7 @@ package com.stellapp.disc.ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -41,6 +42,7 @@ import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -63,13 +65,16 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.stellapp.disc.HeroMode
 import com.stellapp.disc.PlayerViewModel
 import com.stellapp.disc.data.Mix
+import com.stellapp.disc.data.PlayStat
 import com.stellapp.disc.data.Playlist
 import com.stellapp.disc.data.Song
 import com.stellapp.disc.data.Taste
 import com.stellapp.disc.data.TasteStore
 import com.stellapp.disc.ui.theme.Mono
+import com.stellapp.disc.ui.theme.PanelSolid
 import com.stellapp.disc.ui.theme.TextHi
 import com.stellapp.disc.ui.theme.TextLo
 import com.stellapp.disc.ui.theme.Void
@@ -87,6 +92,77 @@ private fun reasonFor(t: Taste?, song: Song): String = when {
     t.completes >= 5 -> "PLAYED ${t.plays} TIMES"
     t.hours[TasteStore.bucketOf(System.currentTimeMillis())] * 2 >= t.hours.sum() -> "YOUR ${listOf("MORNING", "AFTERNOON", "EVENING", "LATE NIGHT")[TasteStore.bucketOf(System.currentTimeMillis())]} GO-TO"
     else -> "BACK IN ROTATION"
+}
+
+/** What the hero card is showing right now. */
+private sealed interface Hero {
+    val reason: String
+    data class OfSong(val song: Song, override val reason: String, val queue: List<Song>) : Hero
+    data class OfList(val group: SongGroup, override val reason: String) : Hero
+}
+
+private const val DAY_MS = 24L * 3600 * 1000
+
+private fun pickHero(
+    mode: HeroMode,
+    songs: List<Song>,
+    picks: List<Song>,
+    tastes: Map<Long, Taste>,
+    stats: Map<Long, PlayStat>,
+    listGroups: List<SongGroup>,
+    pinnedLists: List<SongGroup>,
+    seed: Long,
+): Hero? {
+    if (songs.isEmpty()) return null
+    val now = System.currentTimeMillis()
+    val count = { s: Song -> stats[s.id]?.count ?: tastes[s.id]?.plays ?: 0 }
+    val last = { s: Song -> maxOf(stats[s.id]?.lastPlayed ?: 0L, tastes[s.id]?.lastPlayed ?: 0L) }
+    val rng = kotlin.random.Random(seed)
+    val fallback = picks.firstOrNull()?.let { Hero.OfSong(it, reasonFor(tastes[it.id], it), picks) }
+
+    return when (mode) {
+        HeroMode.TOP_PICK -> fallback
+        HeroMode.MOST_PLAYED -> {
+            val ranked = songs.filter { count(it) > 0 }.sortedByDescending(count)
+            ranked.firstOrNull()?.let { Hero.OfSong(it, "YOUR #1 · PLAYED ${count(it)} TIMES", ranked.take(40)) } ?: fallback
+        }
+        HeroMode.PLAYLIST -> {
+            val pinned = pinnedLists.firstOrNull { it.songs.isNotEmpty() }
+            if (pinned != null) {
+                Hero.OfList(pinned, "PINNED PLAYLIST")
+            } else {
+                listGroups.filter { it.songs.isNotEmpty() }
+                    .maxByOrNull { g -> g.songs.sumOf(count) }
+                    ?.let { Hero.OfList(it, "YOUR TOP PLAYLIST") } ?: fallback
+            }
+        }
+        HeroMode.RARE -> {
+            val rare = songs.filter { count(it) in 1..2 }.shuffled(rng)
+            if (rare.isNotEmpty()) {
+                val s = rare.first()
+                Hero.OfSong(s, if (count(s) == 1) "ONLY PLAYED ONCE" else "ONLY PLAYED TWICE", rare.take(40))
+            } else {
+                val never = songs.filter { count(it) == 0 }.shuffled(rng)
+                never.firstOrNull()?.let { Hero.OfSong(it, "NEVER PLAYED", never.take(40)) } ?: fallback
+            }
+        }
+        HeroMode.FORGOTTEN -> {
+            val gems = songs.filter { count(it) >= 3 && now - last(it) > 30 * DAY_MS }.sortedByDescending(count)
+            val pool = gems.ifEmpty { songs.filter { count(it) > 0 }.sortedBy(last) }
+            pool.firstOrNull()?.let {
+                val days = ((now - last(it)) / DAY_MS).coerceAtLeast(1)
+                Hero.OfSong(it, "NOT HEARD IN $days DAY${if (days == 1L) "" else "S"}", pool.take(40))
+            } ?: fallback
+        }
+        HeroMode.FRESH -> {
+            val fresh = songs.sortedByDescending { it.dateAdded }
+            fresh.firstOrNull()?.let { Hero.OfSong(it, "JUST ADDED", fresh.take(40)) }
+        }
+        HeroMode.RANDOM -> {
+            val mixed = songs.shuffled(rng)
+            Hero.OfSong(mixed.first(), "RANDOM DRAW", mixed.take(40))
+        }
+    }
 }
 
 @Composable
@@ -109,6 +185,8 @@ fun HomeScreen(
     val pinnedListIds by vm.pinnedPlaylists.collectAsStateWithLifecycle()
     val state by vm.state.collectAsStateWithLifecycle()
     val loading by vm.loading.collectAsStateWithLifecycle()
+    val stats by vm.stats.collectAsStateWithLifecycle()
+    val heroMode by vm.heroMode.collectAsStateWithLifecycle()
 
     val byId = remember(songs) { songs.associateBy { it.id } }
     val picks = remember(songs, tastes) { TasteStore.picks(songs) }
@@ -116,6 +194,13 @@ fun HomeScreen(
     val listGroups = remember(playlists, byId) { playlists.map { it.toGroup(byId) } }
     val pinnedLists = remember(listGroups, pinnedListIds) { pinnedListIds.mapNotNull { id -> listGroups.firstOrNull { it.playlistId == id } } }
     val pinnedSongs = remember(pinnedSongIds, byId) { pinnedSongIds.mapNotNull { byId[it] } }
+    val heroSeed = remember { System.nanoTime() }
+    val hero = remember(heroMode, songs, picks, stats, listGroups, pinnedLists) {
+        pickHero(heroMode, songs, picks, tastes, stats, listGroups, pinnedLists, heroSeed)
+    }
+    val heroSongId = (hero as? Hero.OfSong)?.song?.id
+    val rowPicks = remember(picks, heroSongId) { picks.filter { it.id != heroSongId }.take(12) }
+    var pickingHero by remember { mutableStateOf(false) }
 
     var menuSong by remember { mutableStateOf<Song?>(null) }
     var editing by remember { mutableStateOf<Song?>(null) }
@@ -154,11 +239,14 @@ fun HomeScreen(
             item(key = "picks-title") {
                 SectionHead(
                     "REGULAR PICKS",
-                    if (TasteStore.totalListens < 10) "Learning your taste. The more you play, the better this gets."
+                    if (heroMode != HeroMode.TOP_PICK) heroMode.blurb
+                    else if (TasteStore.totalListens < 10) "Learning your taste. The more you play, the better this gets."
                     else "Picked from how you've been listening",
-                )
+                ) {
+                    SmallTab("◈ ${heroMode.label.uppercase()}") { pickingHero = true }
+                }
             }
-            if (picks.isEmpty()) {
+            if (hero == null) {
                 item(key = "picks-empty") {
                     Text(
                         if (loading) "Scanning your library…" else "No music yet. Pull some in with Uplink or Swap.",
@@ -168,15 +256,31 @@ fun HomeScreen(
                 }
             } else {
                 item(key = "hero") {
-                    HeroCard(
-                        song = picks.first(),
-                        reason = reasonFor(tastes[picks.first().id], picks.first()),
-                        active = state.current?.id == picks.first().id,
-                        onPlay = { vm.playList(picks, 0) },
-                        onLongPress = { menuSong = picks.first() },
-                    )
+                    when (hero) {
+                        is Hero.OfSong -> HeroCard(
+                            art = hero.song,
+                            reason = hero.reason,
+                            title = hero.song.title,
+                            subtitle = hero.song.artist,
+                            active = state.current?.id == hero.song.id,
+                            onClick = { vm.playList(hero.queue, hero.queue.indexOf(hero.song).coerceAtLeast(0)) },
+                            onPlay = { vm.playList(hero.queue, hero.queue.indexOf(hero.song).coerceAtLeast(0)) },
+                            onLongPress = { menuSong = hero.song },
+                        )
+                        is Hero.OfList -> HeroCard(
+                            art = hero.group.artSong,
+                            reason = hero.reason,
+                            title = hero.group.title,
+                            subtitle = hero.group.subtitle,
+                            active = state.current != null && hero.group.songs.any { it.id == state.current?.id },
+                            onClick = { onOpenGroup(hero.group) },
+                            onPlay = { vm.playList(hero.group.songs, 0) },
+                            onLongPress = { onOpenGroup(hero.group) },
+                        )
+                        null -> Unit
+                    }
                 }
-                if (picks.size > 1) {
+                if (rowPicks.isNotEmpty()) {
                     item(key = "pick-rows") {
                         LazyHorizontalGrid(
                             rows = GridCells.Fixed(2),
@@ -187,8 +291,8 @@ fun HomeScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            itemsIndexed(picks.drop(1), key = { _, s -> s.id }) { i, s ->
-                                PickTile(s, active = state.current?.id == s.id, playing = state.isPlaying, onClick = { vm.playList(picks, i + 1) }, onLongPress = { menuSong = s })
+                            itemsIndexed(rowPicks, key = { _, s -> s.id }) { i, s ->
+                                PickTile(s, active = state.current?.id == s.id, playing = state.isPlaying, onClick = { vm.playList(rowPicks, i) }, onLongPress = { menuSong = s })
                             }
                         }
                     }
@@ -210,13 +314,16 @@ fun HomeScreen(
             }
 
             // ---------- playlists ----------
-            item(key = "pl-title") { SectionHead("PLAYLISTS", null) }
+            item(key = "pl-title") {
+                SectionHead("PLAYLISTS", if (listGroups.isEmpty()) "Nothing here yet. Tap + NEW to make one." else null) {
+                    SmallTab("+ NEW") { creating = true }
+                }
+            }
             item(key = "pl-row") {
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
-                    item(key = "new") { NewCard { creating = true } }
                     items(listGroups, key = { it.key }) { g -> CoverCard(g.artSong, g.title, g.subtitle, pinned = g.playlistId in pinnedListIds) { onOpenGroup(g) } }
                 }
             }
@@ -303,18 +410,88 @@ fun HomeScreen(
             creating = false
         }
     }
-}
-
-@Composable
-private fun SectionHead(title: String, subtitle: String?) {
-    Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 10.dp)) {
-        Text(title, color = MaterialTheme.colorScheme.primary, fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 13.sp, letterSpacing = 3.sp)
-        if (subtitle != null) Text(subtitle, color = TextLo, fontSize = 12.sp)
+    if (pickingHero) {
+        ModalBottomSheet(onDismissRequest = { pickingHero = false }, containerColor = PanelSolid, contentColor = TextHi) {
+            Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 32.dp)) {
+                Text(
+                    "HERO SHOWS",
+                    color = MaterialTheme.colorScheme.primary,
+                    fontFamily = Mono,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 3.sp,
+                    modifier = Modifier.padding(bottom = 8.dp),
+                )
+                HeroMode.entries.forEach { m ->
+                    val on = m == heroMode
+                    Column(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(SmallCut)
+                            .clickable {
+                                vm.setHeroMode(m)
+                                pickingHero = false
+                            }
+                            .padding(vertical = 10.dp, horizontal = 4.dp)
+                    ) {
+                        Text(
+                            (if (on) "◉ " else "○ ") + m.label,
+                            color = if (on) MaterialTheme.colorScheme.primary else TextHi,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(m.blurb, color = TextLo, fontSize = 12.sp, modifier = Modifier.padding(start = 22.dp))
+                    }
+                }
+            }
+        }
     }
 }
 
 @Composable
-private fun HeroCard(song: Song, reason: String, active: Boolean, onPlay: () -> Unit, onLongPress: () -> Unit) {
+private fun SectionHead(title: String, subtitle: String?, action: (@Composable () -> Unit)? = null) {
+    Column(Modifier.padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(title, color = MaterialTheme.colorScheme.primary, fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 13.sp, letterSpacing = 3.sp)
+            if (action != null) {
+                Spacer(Modifier.width(10.dp))
+                action()
+            }
+        }
+        if (subtitle != null) Text(subtitle, color = TextLo, fontSize = 12.sp)
+    }
+}
+
+/** Small outlined tab that sits beside a section title. */
+@Composable
+private fun SmallTab(label: String, onClick: () -> Unit) {
+    val primary = MaterialTheme.colorScheme.primary
+    Text(
+        label,
+        color = primary,
+        fontFamily = Mono,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = 1.sp,
+        modifier = Modifier
+            .clip(SmallCut)
+            .border(1.dp, primary.copy(alpha = 0.7f), SmallCut)
+            .background(primary.copy(alpha = 0.10f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 3.dp),
+    )
+}
+
+@Composable
+private fun HeroCard(
+    art: Song?,
+    reason: String,
+    title: String,
+    subtitle: String,
+    active: Boolean,
+    onClick: () -> Unit,
+    onPlay: () -> Unit,
+    onLongPress: () -> Unit,
+) {
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
     Box(
@@ -323,9 +500,9 @@ private fun HeroCard(song: Song, reason: String, active: Boolean, onPlay: () -> 
             .fillMaxWidth()
             .aspectRatio(1.45f)
             .neonPanel(primary, glow = 18.dp, fill = Void)
-            .combinedClickable(onClick = onPlay, onLongClick = onLongPress)
+            .combinedClickable(onClick = onClick, onLongClick = onLongPress)
     ) {
-        AlbumArt(song, Modifier.fillMaxSize(), shape = NeonCut)
+        AlbumArt(art, Modifier.fillMaxSize(), shape = NeonCut)
         Box(
             Modifier
                 .fillMaxSize()
@@ -339,8 +516,8 @@ private fun HeroCard(song: Song, reason: String, active: Boolean, onPlay: () -> 
         ) {
             Text(reason, color = secondary, fontFamily = Mono, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
             Spacer(Modifier.height(4.dp))
-            Text(song.title, color = TextHi, fontSize = 22.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
-            Text(song.artist, color = TextLo, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(title, color = TextHi, fontSize = 22.sp, fontWeight = FontWeight.Black, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            Text(subtitle, color = TextLo, fontSize = 14.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         Box(
             Modifier
@@ -384,23 +561,6 @@ private fun PickTile(song: Song, active: Boolean, playing: Boolean, onClick: () 
             Text(song.title, color = if (active) primary else TextHi, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(song.artist, color = TextLo, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-    }
-}
-
-@Composable
-private fun NewCard(onClick: () -> Unit) {
-    val primary = MaterialTheme.colorScheme.primary
-    Column(Modifier.width(120.dp).clickable(onClick = onClick)) {
-        Box(
-            Modifier
-                .size(120.dp)
-                .neonPanel(primary, glow = 6.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text("+", color = primary, fontSize = 40.sp, fontWeight = FontWeight.Bold)
-        }
-        Spacer(Modifier.height(6.dp))
-        Text("NEW PLAYLIST", color = primary, fontFamily = Mono, fontSize = 11.sp, fontWeight = FontWeight.Bold, letterSpacing = 1.sp)
     }
 }
 

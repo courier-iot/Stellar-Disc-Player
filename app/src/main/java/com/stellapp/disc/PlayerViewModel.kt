@@ -116,6 +116,19 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     /** Play videos without the picture (saves battery). */
     val audioOnly: StateFlow<Boolean> = _audioOnly.asStateFlow()
 
+    private val _backdrop = MutableStateFlow(
+        runCatching { com.stellapp.disc.ui.Backdrop.valueOf(prefs.getString(KEY_BACKDROP, null) ?: "SYNTHWAVE") }
+            .getOrDefault(com.stellapp.disc.ui.Backdrop.SYNTHWAVE)
+    )
+    /** Scene drawn behind the now-playing screen. */
+    val backdrop: StateFlow<com.stellapp.disc.ui.Backdrop> = _backdrop.asStateFlow()
+
+    private val _heroMode = MutableStateFlow(
+        runCatching { HeroMode.valueOf(prefs.getString(KEY_HERO_MODE, null) ?: "TOP_PICK") }.getOrDefault(HeroMode.TOP_PICK)
+    )
+    /** What the big hero card on Home shows. */
+    val heroMode: StateFlow<HeroMode> = _heroMode.asStateFlow()
+
     private val _ytSignedIn = MutableStateFlow(UplinkManager.hasCookies(app))
     val ytSignedIn: StateFlow<Boolean> = _ytSignedIn.asStateFlow()
 
@@ -399,6 +412,21 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun setModernHome(on: Boolean) {
         _modernHome.value = on
         prefs.edit().putBoolean(KEY_MODERN_HOME, on).apply()
+    }
+
+    fun setBackdrop(b: com.stellapp.disc.ui.Backdrop) {
+        _backdrop.value = b
+        prefs.edit().putString(KEY_BACKDROP, b.name).apply()
+    }
+
+    fun cycleBackdrop() {
+        val all = com.stellapp.disc.ui.Backdrop.entries
+        setBackdrop(all[(all.indexOf(_backdrop.value) + 1) % all.size])
+    }
+
+    fun setHeroMode(m: HeroMode) {
+        _heroMode.value = m
+        prefs.edit().putString(KEY_HERO_MODE, m.name).apply()
     }
 
     fun togglePinSong(id: Long) = PinStore.toggleSong(id)
@@ -858,6 +886,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         const val KEY_ONBOARDED = "onboarded"
         const val KEY_MODERN_HOME = "modern_home"
         const val KEY_AUDIO_ONLY = "audio_only"
+        const val KEY_BACKDROP = "player_backdrop"
+        const val KEY_HERO_MODE = "hero_mode"
         const val KEY_HIDDEN = "hidden_folders"
         const val KEY_DL_FORMAT = "dl_format"
         const val KEY_DL_KBPS = "dl_kbps"
@@ -869,4 +899,15 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         const val KEY_DL_SUBLANGS = "dl_sublangs"
         const val KEY_DL_SKIP = "dl_skip_existing"
     }
+}
+
+/** What the Home hero card represents. */
+enum class HeroMode(val label: String, val blurb: String) {
+    TOP_PICK("Top pick", "Learned from when and how you listen"),
+    MOST_PLAYED("Most played", "Your most played song of all time"),
+    PLAYLIST("Playlist", "A pinned or favourite playlist"),
+    RARE("Rare listen", "Something you've played only once or twice"),
+    FORGOTTEN("Forgotten gem", "Loved once, not heard in a while"),
+    FRESH("Fresh arrival", "Newest addition to your library"),
+    RANDOM("Random", "A surprise every time you open Home"),
 }
