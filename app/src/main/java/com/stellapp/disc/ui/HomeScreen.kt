@@ -33,11 +33,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
-import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.PlayArrow
 import androidx.compose.material.icons.rounded.PushPin
 import androidx.compose.material.icons.rounded.Search
+import androidx.compose.material.icons.rounded.Share
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -228,9 +228,8 @@ fun HomeScreen(
                 .padding(horizontal = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onUnderTheHood) {
-                Icon(Icons.Rounded.Build, contentDescription = "Under the hood view", tint = TextLo)
-            }
+            // Same width as the two icons on the right, so the title stays centred.
+            Spacer(Modifier.width(96.dp))
             Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 Text("STELLAR//DISC", style = neonTitleStyle(20))
             }
@@ -628,7 +627,14 @@ private fun MixCard(mix: Mix, index: Int, primary: Color, secondary: Color, onCl
 
 /** A playlist, mix, artist or album page opened from Home or Search. */
 @Composable
-fun GroupPage(vm: PlayerViewModel, group: SongGroup, animate: Boolean, onClose: () -> Unit) {
+fun GroupPage(
+    vm: PlayerViewModel,
+    group: SongGroup,
+    animate: Boolean,
+    onClose: () -> Unit,
+    onOpenPlayer: () -> Unit = {},
+    onSharePlaylist: (String) -> Unit = {},
+) {
     val songs by vm.songs.collectAsStateWithLifecycle()
     val playlists by vm.playlists.collectAsStateWithLifecycle()
     val pinnedListIds by vm.pinnedPlaylists.collectAsStateWithLifecycle()
@@ -669,6 +675,9 @@ fun GroupPage(vm: PlayerViewModel, group: SongGroup, animate: Boolean, onClose: 
                     IconButton(onClick = { vm.togglePinPlaylist(id) }) {
                         Icon(Icons.Rounded.PushPin, contentDescription = "Pin to home", tint = if (id in pinnedListIds) MaterialTheme.colorScheme.secondary else TextLo)
                     }
+                    IconButton(onClick = { onSharePlaylist(id) }) {
+                        Icon(Icons.Rounded.Share, contentDescription = "Share playlist (QR code or links)", tint = MaterialTheme.colorScheme.primary)
+                    }
                 }
             }
             Row(
@@ -681,6 +690,7 @@ fun GroupPage(vm: PlayerViewModel, group: SongGroup, animate: Boolean, onClose: 
                     NeonChip("▶ PLAY", false) { vm.playList(list, 0, shuffle = false) }
                     NeonChip("⤨ SHUFFLE", false) { vm.shuffleAll(list) }
                 }
+                group.playlistId?.let { id -> NeonChip("⇄ SHARE", false) { onSharePlaylist(id) } }
                 if (group.kind != GroupKind.PLAYLIST && list.isNotEmpty()) NeonChip("+ SAVE AS PLAYLIST", false) { saving = true }
             }
             if (list.isEmpty()) {
@@ -703,6 +713,7 @@ fun GroupPage(vm: PlayerViewModel, group: SongGroup, animate: Boolean, onClose: 
                     )
                 }
             }
+            MiniPlayer(s = state, onTogglePlay = vm::togglePlay, onNext = vm::next, onOpen = onOpenPlayer, onPrevious = { vm.swipeTrack(false) })
         }
     }
 
@@ -736,7 +747,14 @@ fun GroupPage(vm: PlayerViewModel, group: SongGroup, animate: Boolean, onClose: 
 
 /** Search across songs, videos, playlists, artists and albums. */
 @Composable
-fun SearchScreen(vm: PlayerViewModel, animate: Boolean, onClose: () -> Unit, onOpenGroup: (SongGroup) -> Unit, onOpenVideo: () -> Unit) {
+fun SearchScreen(
+    vm: PlayerViewModel,
+    animate: Boolean,
+    onClose: () -> Unit,
+    onOpenGroup: (SongGroup) -> Unit,
+    onOpenVideo: () -> Unit,
+    onOpenPlayer: () -> Unit = {},
+) {
     val primary = MaterialTheme.colorScheme.primary
     val songs by vm.songs.collectAsStateWithLifecycle()
     val playlists by vm.playlists.collectAsStateWithLifecycle()
@@ -834,6 +852,7 @@ fun SearchScreen(vm: PlayerViewModel, animate: Boolean, onClose: () -> Unit, onO
                     }
                 }
             }
+            MiniPlayer(s = state, onTogglePlay = vm::togglePlay, onNext = vm::next, onOpen = onOpenPlayer, onPrevious = { vm.swipeTrack(false) })
         }
     }
 

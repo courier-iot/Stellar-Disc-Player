@@ -3,6 +3,15 @@ package com.stellapp.disc.ui
 /** Shown once after each update. Keep the newest version first. */
 object WhatsNew {
     val notes: Map<String, String> = linkedMapOf(
+        "3.1.0" to """
+            ADDED
+            • Share a playlist from its page: tap ⇄ SHARE or the share icon for its QR code or links
+            • Swap → Send one of yours: pick any playlist to share
+            • The mini player now also shows on playlist, mix and search pages
+
+            REMOVED
+            • The top-left button on the home screen (use ▤ FULL LIBRARY instead)
+        """.trimIndent(),
         "3.0.2" to """
             CHANGED
             • Downloader engine updated: newer yt-dlp, Python 3.12 and FFmpeg 7.1

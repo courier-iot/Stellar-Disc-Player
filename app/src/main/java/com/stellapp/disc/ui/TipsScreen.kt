@@ -70,6 +70,8 @@ private val TIP_GROUPS: List<Pair<String, List<Tip>>> = listOf(
     ),
     "SHARING" to listOf(
         Tip("Share a link to the app", "Opens Uplink, ready to download"),
+        Tip("⇄ SHARE on a playlist", "Show its QR code, or share it as links"),
+        Tip("Swap → Send one of yours", "Pick any playlist to share from there"),
         Tip("Swap QR code", "Same Wi-Fi only, and encrypted"),
     ),
 )

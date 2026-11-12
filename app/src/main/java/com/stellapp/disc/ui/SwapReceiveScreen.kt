@@ -76,8 +76,10 @@ fun SwapReceiveScreen(
     animate: Boolean,
     onClose: () -> Unit,
     onOpenUplink: () -> Unit,
+    onSharePlaylist: (String) -> Unit = {},
 ) {
     val context = LocalContext.current
+    val playlists by vm.playlists.collectAsStateWithLifecycle()
     val primary = MaterialTheme.colorScheme.primary
     val session by SwapReceiver.session.collectAsStateWithLifecycle()
     val songs by vm.songs.collectAsStateWithLifecycle()
@@ -128,7 +130,7 @@ fun SwapReceiveScreen(
                 Column(Modifier.weight(1f)) {
                     Text("SWAP", style = neonTitleStyle(22))
                     Text(
-                        session?.name?.let { "receiving · $it" } ?: "receive a playlist",
+                        session?.name?.let { "receiving · $it" } ?: "send or receive a playlist",
                         color = TextLo,
                         fontFamily = Mono,
                         fontSize = 11.sp,
@@ -145,6 +147,8 @@ fun SwapReceiveScreen(
                     onPaste = { pasted = it },
                     onScan = { scan() },
                     onCheckLinks = { handleCode(pasted) },
+                    playlists = playlists,
+                    onShare = onSharePlaylist,
                 )
             } else when (s.phase) {
                 SwapPhase.CONNECTING, SwapPhase.CHECKING -> Busy(s.message ?: "Working…")
@@ -170,7 +174,14 @@ fun SwapReceiveScreen(
 }
 
 @Composable
-private fun Intro(pasted: String, onPaste: (String) -> Unit, onScan: () -> Unit, onCheckLinks: () -> Unit) {
+private fun Intro(
+    pasted: String,
+    onPaste: (String) -> Unit,
+    onScan: () -> Unit,
+    onCheckLinks: () -> Unit,
+    playlists: List<com.stellapp.disc.data.Playlist>,
+    onShare: (String) -> Unit,
+) {
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
     Column(
@@ -197,6 +208,35 @@ private fun Intro(pasted: String, onPaste: (String) -> Unit, onScan: () -> Unit,
             color = TextLo,
             fontSize = 13.sp,
         )
+
+        SectionLabel("SEND ONE OF YOURS")
+        if (playlists.isEmpty()) {
+            Text(
+                "Make a playlist first: long-press any song and pick New playlist. Then it shows up here with a QR code to share.",
+                color = TextLo,
+                fontSize = 13.sp,
+            )
+        } else {
+            Text("Pick a playlist to show its QR code (same Wi-Fi) or share it as links (anywhere).", color = TextLo, fontSize = 13.sp)
+            Spacer(Modifier.height(8.dp))
+            playlists.forEach { p ->
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 4.dp)
+                        .neonPanel(primary.copy(alpha = 0.45f), glow = 0.dp)
+                        .clickable { onShare(p.id) }
+                        .padding(horizontal = 14.dp, vertical = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(p.name, color = TextHi, fontSize = 15.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text("${p.songIds.size} tracks", color = TextLo, fontSize = 12.sp)
+                    }
+                    Text("▦ QR / SHARE", color = primary, fontFamily = Mono, fontWeight = FontWeight.Bold, fontSize = 12.sp, letterSpacing = 1.sp)
+                }
+            }
+        }
 
         SectionLabel("OR PASTE A SHARED LINK LIST")
         NeonTextField(pasted, onPaste, placeholder = "Stellar Disc playlist: …", singleLine = false)

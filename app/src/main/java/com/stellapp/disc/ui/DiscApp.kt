@@ -277,11 +277,22 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
                 onClose = { showSearch = false },
                 onOpenGroup = openGroup,
                 onOpenVideo = openVideo,
+                onOpenPlayer = { showPlayer = true },
             )
         }
 
         Overlay(showGroup && homeGroup != null && granted) {
-            homeGroup?.let { GroupPage(vm = vm, group = it, animate = animate && !(playerUp || toolUp || showVideo), onClose = { showGroup = false }) }
+            homeGroup?.let { GroupPage(
+                    vm = vm,
+                    group = it,
+                    animate = animate && !(playerUp || toolUp || showVideo),
+                    onClose = { showGroup = false },
+                    onOpenPlayer = { showPlayer = true },
+                    onSharePlaylist = { id ->
+                        sharePlaylistId = id
+                        showShare = true
+                    },
+                ) }
         }
 
         AnimatedVisibility(
@@ -326,6 +337,10 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
                 onOpenUplink = {
                     showSwap = false
                     showUplink = true
+                },
+                onSharePlaylist = { id ->
+                    sharePlaylistId = id
+                    showShare = true
                 },
             )
         }

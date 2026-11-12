@@ -5,7 +5,7 @@ plugins {
 }
 
 // Bump this for every update: vLARGE.MEDIUM.SMALL
-val appVersion = "3.0.2"
+val appVersion = "3.1.0"
 val appVersionCode = appVersion.split(".").map { it.toInt() }.let { (a, b, c) -> a * 10000 + b * 100 + c }
 
 // Signing key comes from GitHub secrets (see README). Without it, a throwaway debug key is used.
