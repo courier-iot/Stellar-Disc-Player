@@ -297,7 +297,7 @@ fun SettingsScreen(
                     }
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        if (vm.hasJsRuntime) "✓ JavaScript runtime: QuickJS-NG built in. yt-dlp can solve YouTube's checks."
+                        if (vm.hasJsRuntime) "✓ JavaScript runtime: QuickJS built in. yt-dlp can solve YouTube's checks."
                         else "⚠ No JavaScript runtime in this build, so YouTube may fail or offer fewer formats.",
                         color = if (vm.hasJsRuntime) primary else DangerRed,
                         fontSize = 13.sp,

@@ -5,7 +5,7 @@ plugins {
 }
 
 // Bump this for every update: vLARGE.MEDIUM.SMALL
-val appVersion = "3.0.1"
+val appVersion = "3.0.2"
 val appVersionCode = appVersion.split(".").map { it.toInt() }.let { (a, b, c) -> a * 10000 + b * 100 + c }
 
 // Signing key comes from GitHub secrets (see README). Without it, a throwaway debug key is used.
@@ -104,7 +104,7 @@ dependencies {
     implementation("androidx.glance:glance-appwidget:1.1.0")
 
     // yt-dlp for Android (Uplink downloads)
-    val youtubedlAndroid = "0.17.4"
+    val youtubedlAndroid = "0.18.1"
     implementation("io.github.junkfood02.youtubedl-android:library:$youtubedlAndroid")
     implementation("io.github.junkfood02.youtubedl-android:ffmpeg:$youtubedlAndroid")
 

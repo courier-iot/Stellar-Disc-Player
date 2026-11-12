@@ -2,7 +2,7 @@
 
 A cyberpunk / deep-space music player for Android. It plays the music files stored on your phone.
 
-## Features (v3.0.1)
+## Features (v3.0.2)
 
 - **Modern home:** a top bar with the "under the hood" toggle on the left, the logo in the middle, and search and settings on the right. Below that:
   - **Regular picks:** a big hero card plus a double row of picks, learned from what you finish, skip and play at each time of day. Tap the small tab next to the heading to choose what the hero shows: Top pick, Most played, Playlist, Rare listen, Forgotten gem, Fresh arrival or Random.
@@ -11,7 +11,7 @@ A cyberpunk / deep-space music player for Android. It plays the music files stor
 - **Under the hood:** the original library view, one tap away (and back).
 - **Search** across songs, artists, albums, playlists and phone videos.
 - **YouTube sign-in:** sign in right inside the app (Settings → Uplink engine), or import a cookies.txt as a backup, so Uplink gets past "confirm you're not a bot".
-- **Built-in JavaScript runtime:** the build compiles QuickJS-NG into the APK, so yt-dlp can solve YouTube's checks on the phone. Settings shows whether it's included.
+- **Built-in JavaScript runtime:** QuickJS ships inside the downloader engine (youtubedl-android 0.18+), so yt-dlp can solve YouTube's checks on the phone. Settings shows whether it's included.
 - **Nightly yt-dlp** updates (optional) and **always-on yt-dlp options** applied to every download.
 - **Audio-only videos:** play videos as sound only to save battery (toggle in Now Playing or Settings).
 - **Library:** Songs, Albums and Artists tabs, search across title/artist/album, sort by A–Z, Newest or Artist, Play all and Shuffle all.
@@ -129,6 +129,11 @@ Keep `stellardisc.jks` backed up somewhere safe and **never** commit it. If you 
 Change `appVersion` near the top of `app/build.gradle.kts` (format `vLARGE.MEDIUM.SMALL`). The version code is calculated from it, so Android always sees the new build as newer.
 
 ## Changelog
+
+### v3.0.2
+**Added:** nothing
+**Removed:** the workflow step that compiled QuickJS-NG (the downloader library now ships its own, 16 KB ready)
+**Changed:** youtubedl-android 0.17.4 → 0.18.1 (yt-dlp 2025.11.12, Python 3.12, FFmpeg 7.1.1). Every native library is now 16 KB-page ready, so Uplink works on 16 KB phones.
 
 ### v3.0.1
 **Added:** nothing

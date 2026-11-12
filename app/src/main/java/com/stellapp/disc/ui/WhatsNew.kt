@@ -3,6 +3,12 @@ package com.stellapp.disc.ui
 /** Shown once after each update. Keep the newest version first. */
 object WhatsNew {
     val notes: Map<String, String> = linkedMapOf(
+        "3.0.2" to """
+            CHANGED
+            • Downloader engine updated: newer yt-dlp, Python 3.12 and FFmpeg 7.1
+            • Uplink now works on phones that use 16 KB memory pages
+            • The JavaScript runtime for YouTube now comes with the engine itself
+        """.trimIndent(),
         "3.0.1" to """
             CHANGED
             • Fixed: fullscreen video went black after rotating the phone

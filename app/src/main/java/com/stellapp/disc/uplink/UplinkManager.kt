@@ -134,7 +134,7 @@ object UplinkManager {
 
     private fun prefs(context: Context) = context.applicationContext.getSharedPreferences("stellar_disc", Context.MODE_PRIVATE)
 
-    /** The bundled QuickJS-NG runtime, if this build includes it. */
+    /** The QuickJS runtime that ships inside youtubedl-android (0.18+), if it unpacked. */
     fun jsRuntimePath(context: Context): String? {
         val dir = context.applicationContext.applicationInfo.nativeLibraryDir ?: return null
         return File(dir, "libqjs.so").takeIf { it.exists() }?.absolutePath
@@ -216,8 +216,9 @@ object UplinkManager {
         strictCache = strictOptions(context)
         val cookies = CookieVault.tempPlainCopy(context)
         cookies?.let { request.addOption("--cookies", it.absolutePath) }
-        jsRuntimePath(context)?.takeIf { supportsJsRuntimes(_version.value) }?.let { qjs ->
-            request.addOption("--js-runtimes", "quickjs:$qjs")
+        // youtubedl-android 0.18+ passes its own QuickJS (--js-runtimes) on every run, so it
+        // isn't added here again.
+        jsRuntimePath(context)?.takeIf { supportsJsRuntimes(_version.value) }?.let {
             // The official yt-dlp build (which the app updates to) has the challenge-solver scripts
             // built in, so nothing is downloaded at run time. Fetching them from yt-dlp's GitHub is
             // only a fallback you can switch on in Settings.
