@@ -2,7 +2,7 @@
 
 A cyberpunk / deep-space music player for Android. It plays the music files stored on your phone.
 
-## Features (v2.8.0)
+## Features (v2.9.0)
 
 - **Modern home:** a top bar with the "under the hood" toggle on the left, the logo in the middle, and search and settings on the right. Below that:
   - **Regular picks:** a big hero card plus a double row of picks, learned from what you finish, skip and play at each time of day. Tap the small tab next to the heading to choose what the hero shows: Top pick, Most played, Playlist, Rare listen, Forgotten gem, Fresh arrival or Random.
@@ -31,7 +31,9 @@ A cyberpunk / deep-space music player for Android. It plays the music files stor
 - **Listening stats:** top songs and artists, hours listened and when you listen (Settings → Library).
 - **Gestures:** swipe the disc left/right to skip, down to close Now Playing, up for lyrics; double-tap to play/pause, long-press for the queue; slide the right edge for volume; swipe the mini player left/right to skip or up to open it.
 - **What's new** sheet after each update.
-- **Privacy & security:** YouTube sign-in is encrypted on the phone, nothing goes to Android's cloud backup, yt-dlp options that run programs are blocked, Swap turns itself off after 10 idle minutes and blocks repeated wrong codes, and crash reports leave out file names and paths.
+- **Privacy & security:** YouTube sign-in is encrypted on the phone, nothing goes to Android's cloud backup, yt-dlp options that run programs are blocked (or turn on strict mode to allow only known-safe options), Swap transfers are encrypted with a key that only travels in the QR code, Swap turns itself off after 10 idle minutes and blocks repeated wrong codes, yt-dlp's YouTube solver comes built into its official release rather than being downloaded at run time, and crash reports leave out file names and paths.
+- **Complete backups:** besides playlists and settings, backups carry favourites, pins, play counts, listening history, lyrics, tag edits, source links and your backdrop photo, matched song by song on a new phone.
+- **Ready for 16 KB phones:** the built-in JavaScript runtime is built for 16 KB memory pages, every build reports which native parts are ready, and if the downloader can't start the app says why while music keeps playing.
 - **Feels nicer:** a light vibration on swipe, play and skip, Android's predictive back gesture (Now Playing shrinks as you swipe back), smoother screen transitions, and screen-reader labels and actions.
 - **Generated planet art** for tracks with no cover, a different colour per album.
 - **Playlists:** a Playlists tab. Long-press any track to play it next, add it to the queue, or add it to a playlist. Rename and delete from inside a playlist.
@@ -122,6 +124,11 @@ Keep `stellardisc.jks` backed up somewhere safe and **never** commit it. If you 
 Change `appVersion` near the top of `app/build.gradle.kts` (format `vLARGE.MEDIUM.SMALL`). The version code is calculated from it, so Android always sees the new build as newer.
 
 ## Changelog
+
+### v2.9.0
+**Added:** encrypted Swap transfers (key only in the QR code). Backups of favourites, pins, play counts, listening history, lyrics, tag edits and source links, matched by song. A strict yt-dlp options toggle and a solver-from-GitHub fallback toggle. 16 KB page support for QuickJS, plus a build check that lists which native libraries are 16 KB ready and a notice when a newer downloader library is out. Plain-language messages when the downloader can't start.
+**Removed:** downloading yt-dlp's YouTube solver scripts from GitHub on every run (now an opt-in fallback)
+**Changed:** an unreadable YouTube sign-in is detected and cleared with a message. The random rotation refills from the playback service. Multi-file delete works on Android 10. Partial downloads and transfers are cleaned up on every cold start. Undo returns queue items beside their old neighbours.
 
 ### v2.8.0
 **Added:** favourites with a ♥ Favourites playlist, volume levelling, resume for long tracks, Bluetooth auto-play, undo for queue/playlist removals and playlist deletes, multi-select in the library, listening stats, Uplink Wi-Fi only, automatic playlist-or-single detection for Uplink links, a "What's new" sheet, and gestures (swipe down to close, swipe up for lyrics, double-tap to play/pause, long-press for the queue, edge volume slide, mini player swipes). Swap transfers resume if Wi-Fi drops.

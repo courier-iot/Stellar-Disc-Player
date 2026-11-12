@@ -93,6 +93,12 @@ object Rotation {
         active = true
     }
 
+    /** True when a rotation was running before the app was closed. */
+    fun wasSaved(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getBoolean(KEY, false)
+
+    val hasPool: Boolean get() = pool.isNotEmpty()
+
     private fun setPool(library: List<MediaItem>) {
         pool = library.mapNotNull { item -> item.mediaId.toLongOrNull()?.let { it to item } }.toMap()
         deck = RotationDeck(pool.keys.toList())

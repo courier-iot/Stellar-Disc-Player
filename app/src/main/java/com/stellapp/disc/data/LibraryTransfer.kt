@@ -22,6 +22,8 @@ class LibraryTransfer(
     private val scope: CoroutineScope,
     private val settings: AppSettings,
     private val allSongs: () -> List<Song>,
+    /** The library as the files describe it (before your tag edits): used to match on another phone. */
+    private val rawSongs: () -> List<Song> = allSongs,
     private val visibleSongs: () -> List<Song>,
     private val songById: (Long) -> Song?,
     private val setFade: (Int) -> Unit,
@@ -35,6 +37,7 @@ class LibraryTransfer(
                 try {
                     val byId = allSongs().associateBy { it.id }
                     val prefs = settings.toJson().put("fade", PlaybackExtras.fadeSeconds.value)
+                    prefs.put("library", buildExtras())
                     // Your own backdrop photo travels with the backup.
                     val photo = CustomBackdrop.file(ctx)
                     if (photo.exists() && photo.length() in 1L..6_000_000L) {
@@ -53,6 +56,7 @@ class LibraryTransfer(
     fun importBackup(uri: Uri) {
         scope.launch {
             try {
+                var extrasNote = ""
                 val text = readText(uri) ?: throw IllegalStateException()
                 val (lists, prefs) = Backup.parse(text)
                 var matched = 0
@@ -73,8 +77,9 @@ class LibraryTransfer(
                     }
                     settings.restore(it)
                     if (it.has("fade")) setFade(it.optInt("fade", 0))
+                    it.optJSONArray("library")?.let { arr -> extrasNote = restoreExtras(arr) }
                 }
-                post("Restored ${lists.size} playlist(s) · matched $matched of $total tracks")
+                post("Restored ${lists.size} playlist(s) · matched $matched of $total tracks" + extrasNote)
             } catch (e: Exception) {
                 post("That file isn't a Stellar Disc backup")
             }
@@ -122,6 +127,98 @@ class LibraryTransfer(
             val id = PlaylistStore.create(uniquePlaylistName(name))
             PlaylistStore.addSongs(id, ids)
             post("Imported \"$name\" · matched ${ids.size} of ${entries.size} tracks")
+        }
+    }
+
+    /**
+     * Per-song extras that live outside playlists: favourites, pins, play counts, taste data,
+     * lyrics, tag edits and source links. Saved by title/artist/length so another phone can match them.
+     */
+    private fun buildExtras(): org.json.JSONArray {
+        val arr = org.json.JSONArray()
+        val favs = FavStore.ids.value
+        val pins = PinStore.songs.value
+        val stats = PlayStats.stats.value
+        val metas = MetaStore.overrides.value
+        val links = LinkStore.all()
+        rawSongs().filter { !it.isStream }.forEach { s ->
+            val fav = favs.indexOf(s.id)
+            val pin = pins.indexOf(s.id)
+            val st = stats[s.id]
+            val taste = TasteStore.exportEntry(s.id)
+            val lyrics = com.stellapp.disc.lyrics.LyricsStore.load(ctx, s.id)
+            val meta = metas[s.id]
+            val link = links[s.id]
+            if (fav < 0 && pin < 0 && st == null && taste == null && lyrics == null && meta == null && link == null) return@forEach
+            val o = org.json.JSONObject()
+                .put("t", s.title).put("a", s.artist).put("al", s.album).put("d", s.durationMs).put("v", s.isVideo)
+            if (link != null) o.put("l", link)
+            if (fav >= 0) o.put("fav", fav)
+            if (pin >= 0) o.put("pin", pin)
+            if (st != null) o.put("pc", st.count).put("pt", st.lastPlayed)
+            if (taste != null) o.put("taste", taste)
+            if (lyrics != null) o.put("ly", lyrics)
+            if (meta != null) {
+                meta.title?.let { o.put("mt", it) }
+                meta.artist?.let { o.put("ma", it) }
+                meta.album?.let { o.put("mal", it) }
+            }
+            arr.put(o)
+        }
+        return arr
+    }
+
+    /** Matches backup extras to songs on this phone and applies them. Returns a short summary. */
+    private suspend fun restoreExtras(arr: org.json.JSONArray): String {
+        val entries = (0 until arr.length()).mapNotNull { arr.optJSONObject(it) }
+        if (entries.isEmpty()) return ""
+        val tracks = entries.mapIndexed { i, o ->
+            RemoteTrack(
+                index = i,
+                title = o.optString("t"),
+                artist = o.optString("a"),
+                album = o.optString("al"),
+                durationMs = o.optLong("d"),
+                link = o.optString("l").ifBlank { null },
+            )
+        }
+        val matches = SongMatcher.check(ctx, visibleSongs(), tracks, LinkStore.all())
+        val favs = ArrayList<Pair<Int, Long>>()
+        val pins = ArrayList<Pair<Int, Long>>()
+        val plays = HashMap<Long, PlayStat>()
+        val tastes = HashMap<Long, org.json.JSONObject>()
+        var lyricsCount = 0
+        var matched = 0
+        withContext(Dispatchers.IO) {
+            entries.forEachIndexed { i, o ->
+                val m = matches.getOrNull(i) ?: return@forEachIndexed
+                val id = m.local?.id ?: return@forEachIndexed
+                if (m.kind == MatchKind.NEW) return@forEachIndexed
+                matched++
+                if (o.has("fav")) favs += o.optInt("fav") to id
+                if (o.has("pin")) pins += o.optInt("pin") to id
+                if (o.has("pc")) plays[id] = PlayStat(o.optInt("pc"), o.optLong("pt"))
+                o.optJSONObject("taste")?.let { tastes[id] = it }
+                o.optString("ly").takeIf { it.isNotBlank() }?.let { text ->
+                    if (com.stellapp.disc.lyrics.LyricsStore.load(ctx, id) == null) {
+                        com.stellapp.disc.lyrics.LyricsStore.save(ctx, id, text)
+                        lyricsCount++
+                    }
+                }
+                if ((o.has("mt") || o.has("ma") || o.has("mal")) && MetaStore.overrides.value[id] == null) {
+                    MetaStore.set(id, MetaOverride(o.optString("mt").ifBlank { null }, o.optString("ma").ifBlank { null }, o.optString("mal").ifBlank { null }))
+                }
+                o.optString("l").takeIf { it.isNotBlank() && LinkStore.get(id) == null }?.let { LinkStore.put(id, it) }
+            }
+        }
+        if (favs.isNotEmpty()) FavStore.set(favs.sortedBy { it.first }.map { it.second } + FavStore.ids.value)
+        if (pins.isNotEmpty()) PinStore.addSongs(pins.sortedBy { it.first }.map { it.second })
+        PlayStats.merge(plays)
+        TasteStore.importEntries(tastes)
+        return buildString {
+            append(" · song extras for $matched track(s)")
+            if (favs.isNotEmpty()) append(", ${favs.size} favourite(s)")
+            if (lyricsCount > 0) append(", $lyricsCount lyric(s)")
         }
     }
 

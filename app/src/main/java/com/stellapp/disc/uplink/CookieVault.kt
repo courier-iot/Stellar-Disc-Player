@@ -77,6 +77,18 @@ object CookieVault {
         }
     }
 
+    /**
+     * False when a saved sign-in exists but can no longer be unlocked (the phone's key store was
+     * reset by a system update or restore). The unreadable file is removed so the app stops
+     * pretending to be signed in.
+     */
+    fun verify(context: Context): Boolean {
+        if (!has(context)) return true
+        if (load(context) != null) return true
+        clear(context)
+        return false
+    }
+
     fun clear(context: Context) {
         enc(context).delete()
         plain(context).delete()

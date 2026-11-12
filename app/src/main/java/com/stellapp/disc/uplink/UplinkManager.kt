@@ -102,6 +102,9 @@ object UplinkManager {
 
     fun hasCookies(context: Context): Boolean = CookieVault.has(context)
 
+    /** See [CookieVault.verify]. */
+    fun verifySignIn(context: Context): Boolean = CookieVault.verify(context)
+
     /** Copies a Netscape-format cookies.txt in. Returns an error message, or null when it worked. */
     suspend fun importCookies(context: Context, uri: android.net.Uri): String? = withContext(Dispatchers.IO) {
         try {
@@ -136,6 +139,27 @@ object UplinkManager {
         val dir = context.applicationContext.applicationInfo.nativeLibraryDir ?: return null
         return File(dir, "libqjs.so").takeIf { it.exists() }?.absolutePath
     }
+
+    /** Fallback: let yt-dlp fetch its challenge-solver scripts from GitHub if its own copy is missing. */
+    fun solverFromGithub(context: Context): Boolean = prefs(context).getBoolean("ejs_github", false)
+
+    fun setSolverFromGithub(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean("ejs_github", on).apply()
+    }
+
+    private val _solverMissing = MutableStateFlow(false)
+    /** True once yt-dlp said it skipped the solver scripts (so the fallback might help). */
+    val solverMissing: StateFlow<Boolean> = _solverMissing.asStateFlow()
+
+    /** Only the options on a known-safe list are passed to yt-dlp (instead of just blocking risky ones). */
+    fun strictOptions(context: Context): Boolean = prefs(context).getBoolean("ytdlp_strict", false)
+
+    fun setStrictOptions(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean("ytdlp_strict", on).apply()
+        strictCache = on
+    }
+
+    @Volatile private var strictCache: Boolean? = null
 
     fun wifiOnly(context: Context): Boolean = prefs(context).getBoolean("dl_wifi_only", false)
 
@@ -189,19 +213,22 @@ object UplinkManager {
     /** Sign-in, JavaScript runtime and always-on options, for every request. */
     /** Adds sign-in, runtime and always-on options. Returns the temporary cookies copy to delete afterwards. */
     private fun applyEngine(context: Context, request: YoutubeDLRequest): File? {
+        strictCache = strictOptions(context)
         val cookies = CookieVault.tempPlainCopy(context)
         cookies?.let { request.addOption("--cookies", it.absolutePath) }
         jsRuntimePath(context)?.takeIf { supportsJsRuntimes(_version.value) }?.let { qjs ->
             request.addOption("--js-runtimes", "quickjs:$qjs")
-            // The challenge-solver scripts come from yt-dlp's own GitHub (cached after the first use).
-            request.addOption("--remote-components", "ejs:github")
+            // The official yt-dlp build (which the app updates to) has the challenge-solver scripts
+            // built in, so nothing is downloaded at run time. Fetching them from yt-dlp's GitHub is
+            // only a fallback you can switch on in Settings.
+            if (solverFromGithub(context)) request.addOption("--remote-components", "ejs:github")
         }
         parseExtra(globalOptions(context)).forEach { (k, v) -> if (v == null) request.addOption(k) else request.addOption(k, v) }
         return cookies
     }
 
     /** Options in [text] that would be dropped as unsafe. */
-    fun unsafeOptions(text: String): List<String> = YtdlpGuard.blockedIn(parseExtraRaw(text))
+    fun unsafeOptions(context: Context, text: String): List<String> = YtdlpGuard.blockedIn(parseExtraRaw(text), strictOptions(context))
 
     /** Lets other features (like Swap) tell the library that new files arrived. */
     fun announce(batch: FinishedBatch) {
@@ -278,6 +305,17 @@ object UplinkManager {
         _jobs.update { list -> list.filter { it.status.active } }
     }
 
+    /** Why the engines last failed to start, in plain words (null when they're fine). */
+    @Volatile var initError: String? = null
+        private set
+
+    /** Memory page size in KB (4 on most phones, 16 on some newer ones). */
+    fun pageSizeKb(): Long = try {
+        android.system.Os.sysconf(android.system.OsConstants._SC_PAGESIZE) / 1024
+    } catch (e: Throwable) {
+        4
+    }
+
     suspend fun ensureInit(context: Context): Boolean = initLock.withLock {
         if (initialized) return@withLock true
         withContext(Dispatchers.IO) {
@@ -286,10 +324,18 @@ object UplinkManager {
                 YoutubeDL.getInstance().init(app)
                 FFmpeg.getInstance().init(app)
                 initialized = true
+                initError = null
                 _version.value = YoutubeDL.getInstance().version(app)
                 if (_engine.value == EngineState.OFF) _engine.value = EngineState.ONLINE
                 true
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Native load failures are Errors, not Exceptions: catch everything so the player keeps working.
+                initError = if (pageSizeKb() >= 16) {
+                    "This phone uses 16 KB memory pages, which this build of the downloader doesn't support yet. " +
+                        "Music playback is unaffected; downloads will work again once the downloader library is updated."
+                } else {
+                    "The downloader couldn't start: ${e.message?.lineSequence()?.firstOrNull()?.take(120) ?: e.javaClass.simpleName}"
+                }
                 false
             }
         }
@@ -299,7 +345,7 @@ object UplinkManager {
     suspend fun updateYtDlp(context: Context): String = updateYtDlpInner(context).also { powerDownIfIdle() }
 
     private suspend fun updateYtDlpInner(context: Context): String = withContext(Dispatchers.IO) {
-        if (!ensureInit(context)) return@withContext "The downloader couldn't start on this device."
+        if (!ensureInit(context)) return@withContext (initError ?: "The downloader couldn't start on this device.")
         try {
             val app = context.applicationContext
             if (useNightly(app)) {
@@ -326,7 +372,7 @@ object UplinkManager {
      * Links like this expire after a few hours, so streams aren't kept in the saved queue.
      */
     suspend fun resolveStream(context: Context, url: String, video: Boolean): Result<StreamInfo> = withContext(Dispatchers.IO) {
-        if (!ensureInit(context)) return@withContext Result.failure(IllegalStateException("The downloader couldn't start on this device."))
+        if (!ensureInit(context)) return@withContext Result.failure(IllegalStateException(initError ?: "The downloader couldn't start on this device."))
         ensureModernYtDlp(context)
         var cookies: File? = null
         try {
@@ -378,7 +424,7 @@ object UplinkManager {
         update(id) { it.copy(status = JobStatus.PREPARING, message = "Booting downloader… (first run takes a moment)") }
 
         if (!ensureInit(context)) {
-            finish(context, id) { it.copy(status = JobStatus.FAILED, message = "The downloader couldn't start on this device.") }
+            finish(context, id) { it.copy(status = JobStatus.FAILED, message = initError ?: "The downloader couldn't start on this device.") }
             return
         }
 
@@ -554,7 +600,7 @@ object UplinkManager {
     }
 
     /** Turns "--flag value --other" into option pairs. Quotes are respected. */
-    private fun parseExtra(s: String): List<Pair<String, String?>> = YtdlpGuard.filter(parseExtraRaw(s))
+    private fun parseExtra(s: String): List<Pair<String, String?>> = YtdlpGuard.filter(parseExtraRaw(s), strictCache ?: false)
 
     private fun parseExtraRaw(s: String): List<Pair<String, String?>> {
         val tokens = Regex(""""([^"]*)"|'([^']*)'|(\S+)""").findAll(s).map { m ->
@@ -581,6 +627,9 @@ object UplinkManager {
     }
 
     private fun handleLine(id: String, progress: Float, line: String) {
+        if (line.contains("challenge solver script", ignoreCase = true) && line.contains("skipped", ignoreCase = true)) {
+            _solverMissing.value = true
+        }
         itemRe.find(line)?.let { m ->
             val item = m.groupValues[1].toIntOrNull() ?: 1
             val count = m.groupValues[2].toIntOrNull() ?: 1

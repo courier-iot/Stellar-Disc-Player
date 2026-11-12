@@ -27,34 +27,71 @@ fun rememberSongsDeleter(vm: PlayerViewModel): (List<Song>) -> Unit {
     var confirm by remember { mutableStateOf<List<Song>?>(null) }
     var pending by remember { mutableStateOf<List<Song>?>(null) }
 
+    // Android 10 asks about each file another app created, one at a time: work through a queue.
+    val q10 = remember { ArrayDeque<Song>() }
+    val done10 = remember { ArrayList<Long>() }
+    var asking10 by remember { mutableStateOf<Song?>(null) }
+    // Lets the result callback carry on with the queue (each deleter has its own).
+    val q10Continue = remember { arrayOfNulls<() -> Unit>(1) }
+
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
+            val s = asking10
+            asking10 = null
+            if (result.resultCode == Activity.RESULT_OK && s != null) {
+                try {
+                    context.contentResolver.delete(s.uri, null, null)
+                    done10 += s.id
+                } catch (_: Exception) {
+                }
+            }
+            q10Continue[0]?.invoke()
+            return@rememberLauncherForActivityResult
+        }
         val list = pending
         pending = null
-        if (result.resultCode == Activity.RESULT_OK && list != null) {
-            if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
-                list.forEach { s -> try { context.contentResolver.delete(s.uri, null, null) } catch (_: Exception) {} }
-            }
-            vm.afterDelete(list.map { it.id })
-        }
+        if (result.resultCode == Activity.RESULT_OK && list != null) vm.afterDelete(list.map { it.id })
     }
 
-    fun delete(list: List<Song>) {
-        pending = list
-        try {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val pi = MediaStore.createTrashRequest(context.contentResolver, list.map { it.uri }, true)
-                launcher.launch(IntentSenderRequest.Builder(pi.intentSender).build())
-            } else {
-                list.forEach { s -> context.contentResolver.delete(s.uri, null, null) }
-                pending = null
-                vm.afterDelete(list.map { it.id })
+    // Deletes queued files on Android 10; pauses at any file that needs the user's OK.
+    fun continue10() {
+        while (q10.isNotEmpty()) {
+            val s = q10.removeFirst()
+            try {
+                context.contentResolver.delete(s.uri, null, null)
+                done10 += s.id
+            } catch (e: SecurityException) {
+                if (e is RecoverableSecurityException) {
+                    asking10 = s
+                    launcher.launch(IntentSenderRequest.Builder(e.userAction.actionIntent.intentSender).build())
+                    return
+                }
+            } catch (_: Exception) {
             }
-        } catch (e: SecurityException) {
-            if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q && e is RecoverableSecurityException && list.size == 1) {
-                launcher.launch(IntentSenderRequest.Builder(e.userAction.actionIntent.intentSender).build())
-            } else {
-                pending = null
-                vm.post("Android didn't allow deleting that file")
+        }
+        if (done10.isNotEmpty()) vm.afterDelete(done10.toList()) else vm.post("Android didn't allow deleting those files")
+        done10.clear()
+    }
+    q10Continue[0] = { continue10() }
+
+    fun delete(list: List<Song>) {
+        try {
+            when {
+                Build.VERSION.SDK_INT >= Build.VERSION_CODES.R -> {
+                    pending = list
+                    val pi = MediaStore.createTrashRequest(context.contentResolver, list.map { it.uri }, true)
+                    launcher.launch(IntentSenderRequest.Builder(pi.intentSender).build())
+                }
+                Build.VERSION.SDK_INT == Build.VERSION_CODES.Q -> {
+                    q10.clear()
+                    done10.clear()
+                    q10.addAll(list)
+                    continue10()
+                }
+                else -> {
+                    list.forEach { s -> context.contentResolver.delete(s.uri, null, null) }
+                    vm.afterDelete(list.map { it.id })
+                }
             }
         } catch (e: Exception) {
             pending = null

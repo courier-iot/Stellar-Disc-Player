@@ -41,6 +41,8 @@ class SwapServer(
     private var server: ServerSocket? = null
     private var manifestJson: ByteArray = ByteArray(0)
     private val token: String = ByteArray(12).also { SecureRandom().nextBytes(it) }.joinToString("") { "%02x".format(it) }
+    /** Encrypts everything sent; only the QR code carries it. */
+    private val key: ByteArray = SwapCrypto.newKey()
 
     private val _sent = MutableStateFlow(0)
     /** Files sent so far. */
@@ -90,7 +92,8 @@ class SwapServer(
                     }
                 }
             }
-            Pairing(socket.localPort, token, ips, name).encode()
+            val key64 = android.util.Base64.encodeToString(key, android.util.Base64.URL_SAFE or android.util.Base64.NO_WRAP or android.util.Base64.NO_PADDING)
+            Pairing(socket.localPort, token, ips, name, key64).encode()
         } catch (e: Exception) {
             lastError = "Couldn't start sharing: ${e.message ?: "unknown error"}"
             null
@@ -180,14 +183,15 @@ class SwapServer(
                 _peers.update { it + addr }
 
                 when {
-                    path == "/manifest" -> respond(out, 200, "application/json; charset=utf-8", manifestJson)
+                    path == "/manifest" -> respond(out, 200, "application/octet-stream", SwapCrypto.seal(key, manifestJson))
                     path.startsWith("/file/") -> {
                         val song = path.removePrefix("/file/").toIntOrNull()?.let { tracks.getOrNull(it) }
                         if (song == null) respond(out, 404, "text/plain", "No such track".toByteArray())
                         else {
                             activeTransfers.incrementAndGet()
                             try {
-                                if (sendFile(out, song, rangeFrom)) _sent.update { it + 1 }
+                                val index = path.removePrefix("/file/").toInt()
+                                if (sendFile(out, song, rangeFrom, index)) _sent.update { it + 1 }
                             } finally {
                                 activeTransfers.decrementAndGet()
                                 lastActivity = System.currentTimeMillis()
@@ -201,7 +205,7 @@ class SwapServer(
         }
     }
 
-    private fun sendFile(out: OutputStream, song: Song, from: Long = 0L): Boolean {
+    private fun sendFile(out: OutputStream, song: Song, from: Long, index: Int): Boolean {
         val pfd = context.contentResolver.openFileDescriptor(song.uri, "r") ?: run {
             respond(out, 404, "text/plain", "Missing file".toByteArray())
             return false
@@ -219,7 +223,13 @@ class SwapServer(
                     if (n <= 0) break
                     skip -= n
                 }
-                input.copyTo(out, 64 * 1024)
+                val cipher = SwapCrypto.fileCipher(key, index, start)
+                val buf = ByteArray(64 * 1024)
+                while (true) {
+                    val n = input.read(buf)
+                    if (n < 0) break
+                    out.write(cipher.update(buf, 0, n))
+                }
             }
             out.flush()
         }

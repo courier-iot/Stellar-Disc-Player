@@ -70,10 +70,22 @@ fun parseManifest(text: String): RemoteManifest {
 }
 
 /** What the QR code holds: how to reach the sharing phone. */
-data class Pairing(val port: Int, val token: String, val ips: List<String>, val name: String) {
+/**
+ * What the QR code carries. [key] (base64) encrypts the transfer; it's only in the QR code, never
+ * on the network. Shares from Stellar Disc before v2.9 have no key and transfer unencrypted.
+ */
+data class Pairing(val port: Int, val token: String, val ips: List<String>, val name: String, val key: String? = null) {
     fun encode(): String {
         val n = Base64.encodeToString(name.toByteArray(), Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
-        return "$PREFIX$port|$token|${ips.joinToString(",")}|$n"
+        return "$PREFIX$port|$token|${ips.joinToString(",")}|$n" + (key?.let { "|$it" } ?: "")
+    }
+
+    fun keyBytes(): ByteArray? = key?.let {
+        try {
+            Base64.decode(it, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+        } catch (e: Exception) {
+            null
+        }
     }
 
     companion object {
@@ -92,7 +104,7 @@ data class Pairing(val port: Int, val token: String, val ips: List<String>, val 
             } catch (e: Exception) {
                 "Shared playlist"
             }
-            return Pairing(port, p[1], ips, name)
+            return Pairing(port, p[1], ips, name, p.getOrNull(4)?.ifBlank { null })
         }
     }
 }

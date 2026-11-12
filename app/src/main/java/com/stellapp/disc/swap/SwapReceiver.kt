@@ -35,6 +35,8 @@ object SwapReceiver {
     private var job: Job? = null
     private var base: String? = null
     private var token: String? = null
+    /** Transfer key from the QR code (null for shares from older versions). */
+    private var swapKey: ByteArray? = null
 
     private val _session = MutableStateFlow<SwapSession?>(null)
     val session: StateFlow<SwapSession?> = _session.asStateFlow()
@@ -58,6 +60,7 @@ object SwapReceiver {
             }
             base = conn.first
             token = p.token
+            swapKey = p.keyBytes()
             runChecker(app, conn.second, SwapSource.NEARBY, library)
         }
     }
@@ -150,7 +153,7 @@ object SwapReceiver {
                     _session.update { it?.copy(current = i) }
                     val dest = File(dir, "${i}_" + safeName(item.track))
                     try {
-                        SwapClient.fetchFile(b, t, item.track, dest) { p -> setItem(i) { it.copy(progress = p) } }
+                        SwapClient.fetchFile(b, t, item.track, dest, swapKey) { p -> setItem(i) { it.copy(progress = p) } }
                         if (item.track.hash != null && QuickHash.ofFile(dest) != item.track.hash) {
                             throw IOException("File got corrupted on the way")
                         }

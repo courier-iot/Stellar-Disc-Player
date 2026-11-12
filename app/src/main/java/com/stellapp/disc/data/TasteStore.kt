@@ -220,6 +220,38 @@ object TasteStore {
 
     // ---------------- storage ----------------
 
+    /** One song's taste data as JSON (for backups). */
+    fun exportEntry(id: Long): JSONObject? {
+        val t = _tastes.value[id] ?: return null
+        return JSONObject()
+            .put("p", t.plays)
+            .put("c", t.completes)
+            .put("s", t.skips)
+            .put("l", t.lastPlayed)
+            .put("ms", t.listenedMs)
+            .put("h", JSONArray(t.hours))
+            .put("r", JSONArray().apply { t.recent.forEach { (time, w) -> put(JSONArray().put(time).put(w.toDouble())) } })
+    }
+
+    /** Restores taste data from a backup; songs with more local history keep theirs. */
+    fun importEntries(entries: Map<Long, JSONObject>) {
+        if (entries.isEmpty()) return
+        val wrapper = JSONObject()
+        entries.forEach { (id, o) -> wrapper.put(id.toString(), o) }
+        val incoming = try { parse(wrapper.toString()) } catch (e: Exception) { return }
+        val snapshot: Map<Long, Taste>
+        synchronized(lock) {
+            val next = _tastes.value.toMutableMap()
+            incoming.forEach { (id, t) ->
+                val old = next[id]
+                if (old == null || old.plays + old.skips < t.plays + t.skips) next[id] = t
+            }
+            snapshot = next
+            _tastes.value = snapshot
+        }
+        save(snapshot)
+    }
+
     private fun save(snapshot: Map<Long, Taste>) {
         val f = file ?: return
         io.execute {
@@ -286,6 +318,13 @@ object PinStore {
             _songs.value = p.getString("songs", "")!!.split(",").mapNotNull { it.toLongOrNull() }
             _playlists.value = p.getString("playlists", "")!!.split(",").filter { it.isNotBlank() }
         }
+    }
+
+    /** Pins songs (from a backup), keeping any already pinned first. */
+    fun addSongs(ids: List<Long>) {
+        val next = (_songs.value + ids).distinct()
+        _songs.value = next
+        prefs?.edit()?.putString("songs", next.joinToString(","))?.apply()
     }
 
     fun toggleSong(id: Long) {

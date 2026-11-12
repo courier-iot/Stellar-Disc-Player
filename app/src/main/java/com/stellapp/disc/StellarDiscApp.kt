@@ -15,6 +15,7 @@ class StellarDiscApp : Application() {
         super.onCreate()
         CrashLog.install(this)
         com.stellapp.disc.uplink.CookieVault.cleanup(this)
+        cleanUpLeftovers()
         PlaylistStore.init(this)
         LinkStore.init(this)
         MetaStore.init(this)
@@ -24,6 +25,27 @@ class StellarDiscApp : Application() {
         com.stellapp.disc.data.FavStore.init(this)
         AudioFx.init(this)
         PlaybackExtras.init(this)
+    }
+
+    /**
+     * Every cold start: remove half-finished files from downloads or Swap transfers that were cut off
+     * when the app was closed (nothing can be running yet, so it's all safe to delete).
+     */
+    private fun cleanUpLeftovers() {
+        // These two are removed right away (deleting files is quick) so a resumed download can't race it.
+        try {
+            java.io.File(cacheDir, "uplink").deleteRecursively()
+            java.io.File(cacheDir, "swap").deleteRecursively()
+        } catch (_: Exception) {
+        }
+        Thread {
+            try {
+                // Old yt-dlp temp files that sometimes land straight in the cache folder.
+                cacheDir.listFiles { f -> f.isFile && (f.name.endsWith(".part") || f.name.endsWith(".ytdl") || f.name.startsWith("ck_")) }
+                    ?.forEach { it.delete() }
+            } catch (_: Exception) {
+            }
+        }.apply { priority = Thread.MIN_PRIORITY }.start()
     }
 
     override fun onTrimMemory(level: Int) {

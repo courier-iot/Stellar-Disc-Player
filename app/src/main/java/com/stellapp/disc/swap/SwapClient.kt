@@ -17,7 +17,9 @@ object SwapClient {
         for (ip in p.ips) {
             val base = "http://$ip:${p.port}"
             try {
-                val text = getText("$base/manifest?t=${p.token}")
+                val raw = getBytes("$base/manifest?t=${p.token}")
+                val key = p.keyBytes()
+                val text = if (key != null) String(SwapCrypto.open(key, raw), Charsets.UTF_8) else String(raw, Charsets.UTF_8)
                 return@withContext base to parseManifest(text)
             } catch (_: Exception) {
             }
@@ -34,6 +36,7 @@ object SwapClient {
         token: String,
         track: RemoteTrack,
         dest: File,
+        key: ByteArray?,
         onProgress: (Float) -> Unit,
     ) = withContext(Dispatchers.IO) {
         if (dest.exists()) dest.delete()
@@ -41,7 +44,7 @@ object SwapClient {
         while (true) {
             ensureActive()
             try {
-                fetchOnce(base, token, track, dest, onProgress)
+                fetchOnce(base, token, track, dest, key, onProgress)
                 return@withContext
             } catch (e: IOException) {
                 attempt++
@@ -51,7 +54,7 @@ object SwapClient {
         }
     }
 
-    private suspend fun fetchOnce(base: String, token: String, track: RemoteTrack, dest: File, onProgress: (Float) -> Unit) =
+    private suspend fun fetchOnce(base: String, token: String, track: RemoteTrack, dest: File, key: ByteArray?, onProgress: (Float) -> Unit) =
         withContext(Dispatchers.IO) {
             val have = if (dest.exists()) dest.length() else 0L
             val conn = URL("$base/file/${track.index}?t=$token").openConnection() as HttpURLConnection
@@ -67,12 +70,13 @@ object SwapClient {
                     java.io.FileOutputStream(dest, resuming).use { out ->
                         val buf = ByteArray(64 * 1024)
                         var read = if (resuming) have else 0L
+                        val cipher = key?.let { SwapCrypto.fileCipher(it, track.index, read) }
                         var lastReport = 0L
                         while (true) {
                             ensureActive()
                             val n = input.read(buf)
                             if (n < 0) break
-                            out.write(buf, 0, n)
+                            if (cipher != null) out.write(cipher.update(buf, 0, n)) else out.write(buf, 0, n)
                             read += n
                             if (total > 0 && read - lastReport > 256 * 1024) {
                                 lastReport = read
@@ -89,6 +93,18 @@ object SwapClient {
         }
 
     private const val RETRIES = 4
+
+    private fun getBytes(url: String): ByteArray {
+        val conn = URL(url).openConnection() as HttpURLConnection
+        conn.connectTimeout = 2_500
+        conn.readTimeout = 60_000 // the other phone fingerprints its files first
+        try {
+            if (conn.responseCode != 200) throw IOException("HTTP ${conn.responseCode}")
+            return conn.inputStream.use { it.readBytes() }
+        } finally {
+            conn.disconnect()
+        }
+    }
 
     private fun getText(url: String): String {
         val conn = URL(url).openConnection() as HttpURLConnection

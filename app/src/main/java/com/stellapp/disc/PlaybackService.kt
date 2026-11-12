@@ -18,6 +18,7 @@ import com.stellapp.disc.playback.PlaybackExtras
 import com.stellapp.disc.playback.LongTrackMemory
 import com.stellapp.disc.playback.QueueStore
 import com.stellapp.disc.playback.Rotation
+import com.stellapp.disc.data.toMediaItem
 import com.stellapp.disc.widget.WidgetUpdater
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -156,6 +157,22 @@ class PlaybackService : MediaSessionService() {
         QueueStore.restore(this, player)
         WidgetUpdater.push(this, player)
         watchBluetooth(player)
+
+        // The random rotation keeps refilling even if playback restarts without the app being
+        // opened (car or headphone buttons after the phone closed the app): load the library here.
+        if (!Rotation.hasPool && Rotation.wasSaved(this)) {
+            scope.launch {
+                val items = try {
+                    val hidden = getSharedPreferences("stellar_disc", MODE_PRIVATE).getStringSet("hidden_folders", emptySet()) ?: emptySet()
+                    com.stellapp.disc.data.MusicRepository.loadSongs(this@PlaybackService, allVideos = false)
+                        .filter { !it.isVideo && it.folder !in hidden }
+                        .map { com.stellapp.disc.data.MetaStore.apply(it).toMediaItem() }
+                } catch (e: Exception) {
+                    emptyList()
+                }
+                if (items.isNotEmpty() && !Rotation.hasPool) Rotation.resumeIfSaved(this@PlaybackService, items)
+            }
+        }
 
         scope.launch {
             while (isActive) {

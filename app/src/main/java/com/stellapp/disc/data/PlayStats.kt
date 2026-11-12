@@ -40,6 +40,30 @@ object PlayStats {
         }
     }
 
+    /** Adds play counts from a backup, keeping whichever count and last-played time is higher. */
+    fun merge(incoming: Map<Long, PlayStat>) {
+        if (incoming.isEmpty()) return
+        val snapshot: Map<Long, PlayStat>
+        synchronized(lock) {
+            val next = _stats.value.toMutableMap()
+            incoming.forEach { (id, inc) ->
+                val old = next[id]
+                next[id] = PlayStat(maxOf(old?.count ?: 0, inc.count), maxOf(old?.lastPlayed ?: 0L, inc.lastPlayed))
+            }
+            snapshot = next
+            _stats.value = snapshot
+        }
+        val f = file ?: return
+        io.execute {
+            try {
+                val o = JSONObject()
+                snapshot.forEach { (id, s) -> o.put(id.toString(), JSONObject().put("c", s.count).put("t", s.lastPlayed)) }
+                f.writeText(o.toString())
+            } catch (_: Exception) {
+            }
+        }
+    }
+
     fun record(songId: Long) {
         if (songId < 0) return
         val snapshot: Map<Long, PlayStat>

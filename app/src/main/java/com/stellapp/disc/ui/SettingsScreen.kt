@@ -62,6 +62,7 @@ import com.stellapp.disc.UpdateChecker
 import com.stellapp.disc.UpdateResult
 import com.stellapp.disc.playback.AudioFx
 import com.stellapp.disc.playback.PlaybackExtras
+import com.stellapp.disc.uplink.UplinkManager
 import com.stellapp.disc.ui.theme.accentGradient
 import com.stellapp.disc.ui.theme.Accents
 import com.stellapp.disc.ui.theme.Mono
@@ -102,6 +103,9 @@ fun SettingsScreen(
     val customVersion by CustomBackdrop.version.collectAsStateWithLifecycle()
     val btAutoplay by vm.btAutoplay.collectAsStateWithLifecycle()
     val wifiOnly by vm.wifiOnly.collectAsStateWithLifecycle()
+    val strictOptions by vm.strictOptions.collectAsStateWithLifecycle()
+    val solverFromGithub by vm.solverFromGithub.collectAsStateWithLifecycle()
+    val solverMissing by UplinkManager.solverMissing.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { CustomBackdrop.refresh(context) }
     val backdropPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
@@ -274,6 +278,20 @@ fun SettingsScreen(
 
                 Section("UPLINK ENGINE") {
                     ToggleRow("Wi-Fi only", "Downloads wait until you're on Wi-Fi, so they don't use mobile data", wifiOnly) { vm.setWifiOnly(it) }
+                    ToggleRow(
+                        "Strict yt-dlp options",
+                        "Only well-known safe options are used from your always-on and advanced options. Off: only options that run programs are blocked.",
+                        strictOptions,
+                    ) { vm.setStrictOptions(it) }
+                    ToggleRow(
+                        "Solver scripts from GitHub (fallback)",
+                        if (solverMissing) "⚠ yt-dlp reported its YouTube solver missing. Turning this on lets it fetch the scripts from yt-dlp's GitHub."
+                        else "Off: yt-dlp uses the solver built into its official release, so nothing is downloaded at run time.",
+                        solverFromGithub,
+                    ) { vm.setSolverFromGithub(it) }
+                    if (UplinkManager.initError != null) {
+                        Text("⚠ " + (UplinkManager.initError ?: ""), color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                    }
                     Spacer(Modifier.height(8.dp))
                     Text(
                         if (vm.hasJsRuntime) "✓ JavaScript runtime: QuickJS-NG built in. yt-dlp can solve YouTube's checks."

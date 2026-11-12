@@ -41,6 +41,7 @@ import com.stellapp.disc.lyrics.Lyrics
 import com.stellapp.disc.lyrics.LyricsStore
 import com.stellapp.disc.playback.PlaybackExtras
 import com.stellapp.disc.playback.Rotation
+import com.stellapp.disc.playback.UndoPlacement
 import com.stellapp.disc.swap.MatchKind
 import com.stellapp.disc.swap.RemoteTrack
 import com.stellapp.disc.swap.ShareText
@@ -175,6 +176,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         scope = viewModelScope,
         settings = settings,
         allSongs = { rawSongs.map { MetaStore.apply(it) } },
+        rawSongs = { rawSongs },
         visibleSongs = { _songs.value },
         songById = { songById[it.toString()] },
         setFade = { PlaybackExtras.setFade(it) },
@@ -203,6 +205,14 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
         viewModelScope.launch {
             MetaStore.overrides.collect { if (loaded) publish() }
+        }
+        // A saved YouTube sign-in that can't be unlocked any more: say so, rather than failing quietly.
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) { UplinkManager.verifySignIn(ctx) }
+            if (!ok) {
+                _ytSignedIn.value = false
+                post("Your YouTube sign-in was reset by a system change. Sign in again in Settings → Uplink engine.")
+            }
         }
 
         viewModelScope.launch {
@@ -441,9 +451,15 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         val c = controller ?: return
         if (index !in 0 until c.mediaItemCount) return
         val item = c.getMediaItemAt(index)
+        // Remember its neighbours, so undo puts it back in the right spot even if the queue moved on.
+        val before = if (index > 0) c.getMediaItemAt(index - 1).mediaId else null
+        val after = if (index + 1 < c.mediaItemCount) c.getMediaItemAt(index + 1).mediaId else null
         c.removeMediaItem(index)
         offerUndo("Removed from the queue") {
-            controller?.let { cc -> cc.addMediaItem(index.coerceAtMost(cc.mediaItemCount), item) }
+            controller?.let { cc ->
+                val ids = (0 until cc.mediaItemCount).map { cc.getMediaItemAt(it).mediaId }
+                cc.addMediaItem(UndoPlacement.position(ids, before, after, index), item)
+            }
         }
     }
 
@@ -524,10 +540,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setYtdlpGlobalOptions(text: String) {
         UplinkManager.setGlobalOptions(ctx, text.trim())
-        val unsafe = UplinkManager.unsafeOptions(text)
+        val unsafe = UplinkManager.unsafeOptions(ctx, text)
         post(
             if (unsafe.isEmpty()) "Saved. These options now apply to every download."
-            else "Saved, but ${unsafe.joinToString()} will be ignored: options that run programs are blocked for safety."
+            else "Saved, but ${unsafe.joinToString()} will be ignored (blocked for safety${if (UplinkManager.strictOptions(ctx)) ", or not on the strict list" else ""})."
         )
     }
 
@@ -646,6 +662,22 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setBtAutoplay(on: Boolean) = settings.setBtAutoplay(on)
 
+    private val _strictOptions = MutableStateFlow(UplinkManager.strictOptions(app))
+    val strictOptions: StateFlow<Boolean> = _strictOptions.asStateFlow()
+
+    fun setStrictOptions(on: Boolean) {
+        UplinkManager.setStrictOptions(ctx, on)
+        _strictOptions.value = on
+    }
+
+    private val _solverFromGithub = MutableStateFlow(UplinkManager.solverFromGithub(app))
+    val solverFromGithub: StateFlow<Boolean> = _solverFromGithub.asStateFlow()
+
+    fun setSolverFromGithub(on: Boolean) {
+        UplinkManager.setSolverFromGithub(ctx, on)
+        _solverFromGithub.value = on
+    }
+
     fun setWifiOnly(on: Boolean) {
         UplinkManager.setWifiOnly(ctx, on)
         _wifiOnly.value = on
@@ -715,8 +747,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun startDownload(options: DownloadOptions, remember: Boolean = true) {
         if (remember) uplinkSettings.save(options)
-        val unsafe = UplinkManager.unsafeOptions(options.extraArgs)
-        if (unsafe.isNotEmpty()) post("Skipping ${unsafe.joinToString()}: options that run programs are blocked for safety.")
+        val unsafe = UplinkManager.unsafeOptions(ctx, options.extraArgs)
+        if (unsafe.isNotEmpty()) post("Skipping ${unsafe.joinToString()}: blocked for safety${if (UplinkManager.strictOptions(ctx)) " (strict options are on)" else ""}.")
         UplinkManager.enqueue(ctx, options)
     }
 

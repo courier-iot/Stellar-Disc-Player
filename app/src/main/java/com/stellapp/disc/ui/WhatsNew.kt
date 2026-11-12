@@ -3,6 +3,21 @@ package com.stellapp.disc.ui
 /** Shown once after each update. Keep the newest version first. */
 object WhatsNew {
     val notes: Map<String, String> = linkedMapOf(
+        "2.9.0" to """
+            ADDED
+            • Swap transfers are encrypted; the key is only in the QR code (both phones need v2.9)
+            • Backups now include favourites, pins, play counts, listening history, lyrics, tag edits and source links, matched by song on a new phone
+            • Settings → Uplink engine: "Strict yt-dlp options" and a GitHub fallback for YouTube's solver scripts
+            • Clear messages when the downloader can't start (for example on phones with 16 KB memory pages)
+
+            CHANGED
+            • yt-dlp uses the solver built into its official release instead of downloading scripts at run time
+            • If your YouTube sign-in gets reset by a system update, the app tells you instead of failing quietly
+            • The random rotation keeps refilling even when playback starts without opening the app
+            • Deleting several files works on Android 10
+            • Leftover partial downloads are cleaned up every time the app starts
+            • Undo puts a queue item back next to its old neighbours
+        """.trimIndent(),
         "2.8.0" to """
             ADDED
             • Favourites: tap ♥ in Now Playing or a song's menu; they collect in a Favourites playlist

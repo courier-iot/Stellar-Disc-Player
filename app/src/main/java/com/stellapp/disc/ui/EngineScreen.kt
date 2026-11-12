@@ -89,7 +89,7 @@ fun EngineGateScreen(gate: EngineGate, onDone: () -> Unit) {
                 lines += "› LOADING YT-DLP CORE"
                 heat.animateTo(0.65f, tween(500, easing = FastOutSlowInEasing))
                 val ok = boot.await()
-                lines += if (ok) "› FFMPEG ONLINE" else "› ENGINE FAULT — DOWNLOADS MAY NOT WORK"
+                lines += if (ok) "› FFMPEG ONLINE" else "› ENGINE FAULT: " + (UplinkManager.initError ?: "DOWNLOADS MAY NOT WORK")
                 heat.animateTo(1f, tween(450, easing = FastOutSlowInEasing))
                 val v = UplinkManager.version.value
                 lines += if (ok) "› ENGINES HOT" + (v?.let { "  ·  yt-dlp $it" } ?: "") else "› CONTINUING ANYWAY"
