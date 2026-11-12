@@ -2,7 +2,7 @@
 
 A cyberpunk / deep-space music player for Android. It plays the music files stored on your phone.
 
-## Features (v2.6.0)
+## Features (v2.7.0)
 
 - **Modern home:** a top bar with the "under the hood" toggle on the left, the logo in the middle, and search and settings on the right. Below that:
   - **Regular picks:** a big hero card plus a double row of picks, learned from what you finish, skip and play at each time of day. Tap the small tab next to the heading to choose what the hero shows: Top pick, Most played, Playlist, Rare listen, Forgotten gem, Fresh arrival or Random.
@@ -16,11 +16,15 @@ A cyberpunk / deep-space music player for Android. It plays the music files stor
 - **Audio-only videos:** play videos as sound only to save battery (toggle in Now Playing or Settings).
 - **Library:** Songs, Albums and Artists tabs, search across title/artist/album, sort by A–Z, Newest or Artist, Play all and Shuffle all.
 - **Now Playing:** the Stellar Disc, a spinning neon record with the cover art as its label (or a glowing star when there's no art) and pulse rings that ripple with the music. **Swipe the disc** left or right to skip tracks. **Clear view** (◐ chip) fades the disc or video away so your backdrop fills the screen; tap the empty space to bring it back. 22 backdrops picked in Settings → Look. **Photo scenes** (real NASA, ESA/Hubble and Unsplash images, each with a little motion added): Carina nebula, Spiral galaxy, Deep field, Saturn, Saturn close-up, Eclipse (lined up so the disc becomes the Moon), Primordial black holes, Warp drive (photo), ISS window, Neon city, Kabukicho, Night train, Tokyo from above. **Drawn scenes:** Synthwave, Moonwave, Black hole, Pulsar, Nebula, Aurora, Warp drive, Fighter cockpit. **Your photo:** use any picture from your gallery. Animated spectrum bars, a seek bar, shuffle, and repeat (off / all / one).
-- **Random rotation:** tap a single song (on Home, in search, in a playlist or the library) and it plays first, followed by a random shuffle of the rest of your music. ▶ PLAY / ⤨ SHUFFLE on a playlist still play just that playlist.
+- **Random rotation:** tap a single song (on Home, in search, in a playlist or the library) and it plays first, followed by random picks from the rest of your music. The queue holds 150 songs: from song 51 on, the oldest drops off and a new one is dealt onto the end, so it cycles through your whole library without ever growing. ▶ PLAY / ⤨ SHUFFLE on a playlist still play just that playlist.
 - **Uplink engines power down:** yt-dlp and FFmpeg spool up (with a short spool-up screen) when you open Uplink and cool down (with a cool-down screen) when you leave, so outside Uplink only the player runs. Downloads still in progress keep the engines on until they finish.
 - **Queue:** a sheet showing the real play order (follows shuffle). Tap any track to jump to it.
 - **Background playback:** keeps playing with the screen off or the app closed. Notification, lock-screen and Bluetooth/headphone controls work, and it pauses when headphones are unplugged.
 - **Mini player** with a progress line.
+- **Landscape and tablets:** Now Playing puts the disc on the left and the controls on the right when the screen is wider than it is tall.
+- **Battery friendly:** screens covered by another screen stop animating, and Battery Saver automatically slows animations down. Photo backdrops use half the memory and are released when Android needs memory back.
+- **Downloads survive restarts:** unfinished Uplink downloads resume the next time you open the app, including after Android 15's daily background-download limit.
+- **Feels nicer:** a light vibration on swipe, play and skip, Android's predictive back gesture (Now Playing shrinks as you swipe back), smoother screen transitions, and screen-reader labels and actions.
 - **Generated planet art** for tracks with no cover, a different colour per album.
 - **Playlists:** a Playlists tab. Long-press any track to play it next, add it to the queue, or add it to a playlist. Rename and delete from inside a playlist.
 - **Uplink downloader (yt-dlp):**
@@ -109,6 +113,11 @@ Keep `stellardisc.jks` backed up somewhere safe and **never** commit it. If you 
 Change `appVersion` near the top of `app/build.gradle.kts` (format `vLARGE.MEDIUM.SMALL`). The version code is calculated from it, so Android always sees the new build as newer.
 
 ## Changelog
+
+### v2.7.0
+**Added:** a rolling 150-song random rotation (from song 51, the oldest drops off and a new one is added). Downloads resume after the app is closed or restarted. Backups now include the backdrop, Clear view, home and hero settings and your own backdrop photo. Landscape and tablet layout for Now Playing. Predictive back, light haptics, and screen-reader actions for next and previous on the disc. Automatic tests that run before every build.
+**Removed:** the unlimited random queue (it used to queue your whole library at once)
+**Changed:** covered screens stop animating, and Battery Saver calms animations. Photo backdrops use half the memory and free it when the phone runs low. Targets Android 15, and handles its background-download time limit. Open playlist, artist and album pages come back after Android closes the app in the background. Smoother screen transitions. The app's main controller is split into smaller parts (settings, backups, lyrics, Uplink options) so future updates are less likely to break things.
 
 ### v2.6.0
 **Added:** 13 photo backdrops from real images (Carina nebula, Spiral galaxy, Deep field, Saturn, Saturn close-up, Eclipse, Primordial black holes, Warp drive photo, ISS window, Neon city, Kabukicho, Night train, Tokyo from above), each with subtle motion like slow drift, rain, glints or flicker. A "Your photo" backdrop that uses any picture from your gallery. A new drawn Moonwave scene. A Backdrop photos section in Credits & Support.

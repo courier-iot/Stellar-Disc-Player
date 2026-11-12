@@ -5,7 +5,7 @@ plugins {
 }
 
 // Bump this for every update: vLARGE.MEDIUM.SMALL
-val appVersion = "2.6.0"
+val appVersion = "2.7.0"
 val appVersionCode = appVersion.split(".").map { it.toInt() }.let { (a, b, c) -> a * 10000 + b * 100 + c }
 
 // Signing key comes from GitHub secrets (see README). Without it, a throwaway debug key is used.
@@ -14,12 +14,12 @@ val hasReleaseKey = keystorePath != null && file(keystorePath).exists()
 
 android {
     namespace = "com.stellapp.disc"
-    compileSdk = 34
+    compileSdk = 35
 
     defaultConfig {
         applicationId = "com.stellapp.disc"
         minSdk = 26
-        targetSdk = 34
+        targetSdk = 35
         versionCode = appVersionCode
         versionName = appVersion
 
@@ -71,6 +71,9 @@ android {
         compose = true
         buildConfig = true
     }
+    testOptions {
+        unitTests.isReturnDefaultValues = true
+    }
     lint {
         abortOnError = false
         checkReleaseBuilds = false
@@ -109,4 +112,8 @@ dependencies {
     implementation("com.journeyapps:zxing-android-embedded:4.3.0")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-guava:1.8.1")
     implementation("androidx.annotation:annotation-experimental:1.4.1")
+
+    // Unit tests, run by GitHub Actions before every build.
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.json:json:20240303")
 }

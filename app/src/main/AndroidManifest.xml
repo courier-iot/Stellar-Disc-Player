@@ -27,7 +27,8 @@
         android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:theme="@style/Theme.StellarDisc"
-        android:usesCleartextTraffic="true">
+        android:usesCleartextTraffic="true"
+        android:enableOnBackInvokedCallback="true">
         <!-- Cleartext is needed for Swap: phones talk over plain HTTP on your own Wi-Fi, protected by the one-time QR code. -->
 
         <activity
