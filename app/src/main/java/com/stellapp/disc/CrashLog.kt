@@ -48,10 +48,22 @@ object CrashLog {
         File(context.filesDir, FILE_NAME).delete()
     }
 
+    private val pathRe = Regex("""(/storage/|/sdcard/|/data/user/|/data/data/|/mnt/)[^\s:'",)]+""")
+    private val uriRe = Regex("""content://[^\s'",)]+""")
+    private val urlRe = Regex("""https?://[^\s'",)]+""")
+    private val mediaFileRe = Regex("""[^\s/'"]+\.(mp3|m4a|aac|opus|ogg|oga|flac|wav|webm|mka|mp4|mkv|mov|m4v|lrc|jpg|jpeg|png)\b""", RegexOption.IGNORE_CASE)
+
+    /** Removes file paths, media links and file names (which can include song titles) before a report leaves the phone. */
+    fun scrub(report: String): String = report
+        .replace(uriRe, "<content-uri>")
+        .replace(urlRe, "<link>")
+        .replace(pathRe, "<path>")
+        .replace(mediaFileRe, "<file>")
+
     /** A "new issue" link on GitHub with the crash log filled in. */
     fun issueUrl(report: String): String {
         val title = "Crash report (v${BuildConfig.VERSION_NAME})"
-        val body = "**What were you doing when it crashed?**\n\n\n**Crash log**\n```\n" + report.take(4000) + "\n```"
+        val body = "**What were you doing when it crashed?**\n\n\n**Crash log**\n```\n" + scrub(report).take(4000) + "\n```"
         return "${AppInfo.SUPPORT_URL}/new?title=" + URLEncoder.encode(title, "UTF-8") + "&body=" + URLEncoder.encode(body, "UTF-8")
     }
 }

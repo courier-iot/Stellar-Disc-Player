@@ -100,9 +100,7 @@ object UplinkManager {
 
     // ---------- YouTube sign-in (cookies.txt) ----------
 
-    fun cookiesFile(context: Context): File = File(context.applicationContext.filesDir, "yt_cookies.txt")
-
-    fun hasCookies(context: Context): Boolean = cookiesFile(context).let { it.exists() && it.length() > 0 }
+    fun hasCookies(context: Context): Boolean = CookieVault.has(context)
 
     /** Copies a Netscape-format cookies.txt in. Returns an error message, or null when it worked. */
     suspend fun importCookies(context: Context, uri: android.net.Uri): String? = withContext(Dispatchers.IO) {
@@ -113,7 +111,7 @@ object UplinkManager {
             val looksRight = lines.any { it.split("\t").size >= 7 }
             if (!looksRight) return@withContext "That doesn't look like a cookies.txt file (Netscape format)"
             if (lines.none { it.contains("youtube.com") }) return@withContext "No YouTube cookies in that file. Export it while signed in to youtube.com"
-            cookiesFile(context).writeText(text)
+            CookieVault.save(context, text)
             null
         } catch (e: Exception) {
             "Couldn't import: ${e.message ?: "unknown error"}"
@@ -121,12 +119,12 @@ object UplinkManager {
     }
 
     fun clearCookies(context: Context) {
-        cookiesFile(context).delete()
+        CookieVault.clear(context)
     }
 
     /** Saves cookies captured by the in-app sign-in screen. */
     fun saveCookies(context: Context, netscapeText: String) {
-        cookiesFile(context).writeText(netscapeText)
+        CookieVault.save(context, netscapeText)
     }
 
     // ---------- engine options ----------
@@ -137,6 +135,18 @@ object UplinkManager {
     fun jsRuntimePath(context: Context): String? {
         val dir = context.applicationContext.applicationInfo.nativeLibraryDir ?: return null
         return File(dir, "libqjs.so").takeIf { it.exists() }?.absolutePath
+    }
+
+    fun wifiOnly(context: Context): Boolean = prefs(context).getBoolean("dl_wifi_only", false)
+
+    fun setWifiOnly(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean("dl_wifi_only", on).apply()
+    }
+
+    private fun onUnmeteredNetwork(context: Context): Boolean {
+        val cm = context.applicationContext.getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        val caps = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        return caps.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
     }
 
     fun useNightly(context: Context): Boolean = prefs(context).getBoolean("ytdlp_nightly", false)
@@ -177,15 +187,21 @@ object UplinkManager {
     }
 
     /** Sign-in, JavaScript runtime and always-on options, for every request. */
-    private fun applyEngine(context: Context, request: YoutubeDLRequest) {
-        if (hasCookies(context)) request.addOption("--cookies", cookiesFile(context).absolutePath)
+    /** Adds sign-in, runtime and always-on options. Returns the temporary cookies copy to delete afterwards. */
+    private fun applyEngine(context: Context, request: YoutubeDLRequest): File? {
+        val cookies = CookieVault.tempPlainCopy(context)
+        cookies?.let { request.addOption("--cookies", it.absolutePath) }
         jsRuntimePath(context)?.takeIf { supportsJsRuntimes(_version.value) }?.let { qjs ->
             request.addOption("--js-runtimes", "quickjs:$qjs")
             // The challenge-solver scripts come from yt-dlp's own GitHub (cached after the first use).
             request.addOption("--remote-components", "ejs:github")
         }
         parseExtra(globalOptions(context)).forEach { (k, v) -> if (v == null) request.addOption(k) else request.addOption(k, v) }
+        return cookies
     }
+
+    /** Options in [text] that would be dropped as unsafe. */
+    fun unsafeOptions(text: String): List<String> = YtdlpGuard.blockedIn(parseExtraRaw(text))
 
     /** Lets other features (like Swap) tell the library that new files arrived. */
     fun announce(batch: FinishedBatch) {
@@ -312,9 +328,10 @@ object UplinkManager {
     suspend fun resolveStream(context: Context, url: String, video: Boolean): Result<StreamInfo> = withContext(Dispatchers.IO) {
         if (!ensureInit(context)) return@withContext Result.failure(IllegalStateException("The downloader couldn't start on this device."))
         ensureModernYtDlp(context)
+        var cookies: File? = null
         try {
             val request = YoutubeDLRequest(url.trim())
-            applyEngine(context, request)
+            cookies = applyEngine(context, request)
             request.addOption("--dump-json")
             request.addOption("--no-playlist")
             request.addOption(
@@ -348,6 +365,8 @@ object UplinkManager {
         } catch (e: Exception) {
             val msg = e.message?.lineSequence()?.lastOrNull { it.isNotBlank() }?.removePrefix("ERROR:")?.trim()
             Result.failure(IllegalStateException(msg ?: "Couldn't open that stream"))
+        } finally {
+            cookies?.delete()
         }
     }
 
@@ -370,13 +389,23 @@ object UplinkManager {
         update(id) { it.copy(message = "Checking yt-dlp is up to date…") }
         ensureModernYtDlp(context)
         val request = YoutubeDLRequest(o.url.trim())
-        applyEngine(context, request)
+        val cookies = applyEngine(context, request)
         buildArgs(o, dir).forEach { (key, value) ->
             if (value == null) request.addOption(key) else request.addOption(key, value)
         }
 
         if (o.skipExisting) request.addOption("--download-archive", ArchiveStore.prepare(context, o.format.isVideo))
 
+        // Wi-Fi only: wait (without using mobile data) until an unmetered network is back.
+        while (wifiOnly(context) && !onUnmeteredNetwork(context)) {
+            if (find(id)?.status == JobStatus.CANCELLED) {
+                cookies?.delete()
+                dir.deleteRecursively()
+                return
+            }
+            update(id) { it.copy(message = "Waiting for Wi-Fi… (Settings → Uplink engine → Wi-Fi only)") }
+            kotlinx.coroutines.delay(5_000)
+        }
         update(id) { it.copy(status = JobStatus.DOWNLOADING, message = "Opening channel…") }
         var lastError: String? = null
         var failure: String? = null
@@ -389,6 +418,8 @@ object UplinkManager {
             }
         } catch (e: Exception) {
             failure = lastError ?: e.message?.lineSequence()?.lastOrNull { it.isNotBlank() }?.trim() ?: "Download failed"
+        } finally {
+            cookies?.delete()
         }
 
         if (find(id)?.status == JobStatus.CANCELLED) {
@@ -523,7 +554,9 @@ object UplinkManager {
     }
 
     /** Turns "--flag value --other" into option pairs. Quotes are respected. */
-    private fun parseExtra(s: String): List<Pair<String, String?>> {
+    private fun parseExtra(s: String): List<Pair<String, String?>> = YtdlpGuard.filter(parseExtraRaw(s))
+
+    private fun parseExtraRaw(s: String): List<Pair<String, String?>> {
         val tokens = Regex(""""([^"]*)"|'([^']*)'|(\S+)""").findAll(s).map { m ->
             m.groupValues.drop(1).firstOrNull { it.isNotEmpty() } ?: ""
         }.toList()

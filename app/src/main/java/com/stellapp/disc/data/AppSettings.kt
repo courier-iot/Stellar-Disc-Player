@@ -39,6 +39,15 @@ class AppSettings(private val prefs: SharedPreferences) {
     )
     val heroMode: StateFlow<HeroMode> = _heroMode.asStateFlow()
 
+    private val _btAutoplay = MutableStateFlow(prefs.getBoolean(KEY_BT_AUTOPLAY, false))
+    /** Start playing when Bluetooth audio connects. Read by the playback service. */
+    val btAutoplay: StateFlow<Boolean> = _btAutoplay.asStateFlow()
+
+    fun setBtAutoplay(on: Boolean) {
+        _btAutoplay.value = on
+        prefs.edit().putBoolean(KEY_BT_AUTOPLAY, on).apply()
+    }
+
     fun setAccent(index: Int) {
         _accent.value = index
         prefs.edit().putInt(KEY_ACCENT, index).apply()
@@ -88,6 +97,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         .put("backdrop", _backdrop.value.name)
         .put("clearView", _clearView.value)
         .put("heroMode", _heroMode.value.name)
+        .put("btAutoplay", _btAutoplay.value)
 
     /** Applies whatever a backup contains (older backups simply have fewer keys). */
     fun restore(o: JSONObject) {
@@ -98,6 +108,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         if (o.has("backdrop")) runCatching { setBackdrop(Backdrop.valueOf(o.optString("backdrop"))) }
         if (o.has("clearView")) setClearView(o.optBoolean("clearView", false))
         if (o.has("heroMode")) runCatching { setHeroMode(HeroMode.valueOf(o.optString("heroMode"))) }
+        if (o.has("btAutoplay")) setBtAutoplay(o.optBoolean("btAutoplay", false))
     }
 
     private companion object {
@@ -109,5 +120,6 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_BACKDROP = "player_backdrop"
         const val KEY_HERO_MODE = "hero_mode"
         const val KEY_CLEAR_VIEW = "clear_view"
+        const val KEY_BT_AUTOPLAY = "bt_autoplay"
     }
 }

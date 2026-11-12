@@ -8,6 +8,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -52,6 +53,15 @@ class SwapServer(
     var lastError: String? = null
         private set
 
+    private val _expired = MutableStateFlow(false)
+    /** True once sharing switched itself off after [IDLE_LIMIT_MS] with nothing happening. */
+    val expired: StateFlow<Boolean> = _expired.asStateFlow()
+
+    @Volatile private var lastActivity = System.currentTimeMillis()
+    private val activeTransfers = java.util.concurrent.atomic.AtomicInteger(0)
+    /** Wrong-code attempts per address; after [MAX_BAD_TRIES] that address is ignored. */
+    private val badTries = java.util.concurrent.ConcurrentHashMap<String, Int>()
+
     /** Prepares the track list and starts listening. Returns the QR code text, or null on failure. */
     suspend fun start(): String? = withContext(Dispatchers.IO) {
         try {
@@ -68,7 +78,18 @@ class SwapServer(
                 ServerSocket(0)
             }
             server = socket
+            lastActivity = System.currentTimeMillis()
             scope.launch { acceptLoop(socket) }
+            // Switch sharing off by itself if nobody uses it for a while.
+            scope.launch {
+                while (isActive && !socket.isClosed) {
+                    delay(15_000)
+                    if (activeTransfers.get() == 0 && System.currentTimeMillis() - lastActivity > IDLE_LIMIT_MS) {
+                        _expired.value = true
+                        stop()
+                    }
+                }
+            }
             Pairing(socket.localPort, token, ips, name).encode()
         } catch (e: Exception) {
             lastError = "Couldn't start sharing: ${e.message ?: "unknown error"}"
@@ -124,10 +145,17 @@ class SwapServer(
             socket.use { s ->
                 s.soTimeout = 20_000
                 val input = BufferedInputStream(s.getInputStream())
+                val addr = s.inetAddress?.hostAddress ?: "?"
+                if ((badTries[addr] ?: 0) >= MAX_BAD_TRIES) return
                 val requestLine = readLine(input) ?: return
+                var rangeFrom = 0L
                 while (true) {
                     val header = readLine(input) ?: break
                     if (header.isEmpty()) break
+                    // "Range: bytes=12345-" lets the other phone pick up a transfer where it broke off.
+                    if (header.startsWith("Range:", ignoreCase = true)) {
+                        rangeFrom = Regex("""bytes=(\d+)-""").find(header)?.groupValues?.get(1)?.toLongOrNull() ?: 0L
+                    }
                 }
                 val out = BufferedOutputStream(s.getOutputStream(), 64 * 1024)
                 val parts = requestLine.split(" ")
@@ -142,18 +170,29 @@ class SwapServer(
                     if (p.size == 2) p[0] to URLDecoder.decode(p[1], "UTF-8") else null
                 }.toMap()
 
-                if (params["t"] != token) {
+                val given = (params["t"] ?: "").toByteArray()
+                if (!java.security.MessageDigest.isEqual(given, token.toByteArray())) {
+                    badTries.merge(addr, 1) { a, b -> a + b }
                     respond(out, 403, "text/plain", "Wrong code".toByteArray())
                     return
                 }
-                s.inetAddress?.hostAddress?.let { addr -> _peers.update { it + addr } }
+                lastActivity = System.currentTimeMillis()
+                _peers.update { it + addr }
 
                 when {
                     path == "/manifest" -> respond(out, 200, "application/json; charset=utf-8", manifestJson)
                     path.startsWith("/file/") -> {
                         val song = path.removePrefix("/file/").toIntOrNull()?.let { tracks.getOrNull(it) }
                         if (song == null) respond(out, 404, "text/plain", "No such track".toByteArray())
-                        else if (sendFile(out, song)) _sent.update { it + 1 }
+                        else {
+                            activeTransfers.incrementAndGet()
+                            try {
+                                if (sendFile(out, song, rangeFrom)) _sent.update { it + 1 }
+                            } finally {
+                                activeTransfers.decrementAndGet()
+                                lastActivity = System.currentTimeMillis()
+                            }
+                        }
                     }
                     else -> respond(out, 404, "text/plain", "Not found".toByteArray())
                 }
@@ -162,7 +201,7 @@ class SwapServer(
         }
     }
 
-    private fun sendFile(out: OutputStream, song: Song): Boolean {
+    private fun sendFile(out: OutputStream, song: Song, from: Long = 0L): Boolean {
         val pfd = context.contentResolver.openFileDescriptor(song.uri, "r") ?: run {
             respond(out, 404, "text/plain", "Missing file".toByteArray())
             return false
@@ -171,8 +210,17 @@ class SwapServer(
             val length = fd.statSize
             val mime = try { context.contentResolver.getType(song.uri) } catch (e: Exception) { null }
                 ?: "application/octet-stream"
-            out.write(header(200, mime, length))
-            FileInputStream(fd.fileDescriptor).use { it.copyTo(out, 64 * 1024) }
+            val start = from.coerceIn(0L, length)
+            out.write(header(if (start > 0) 206 else 200, mime, length - start, if (start > 0) "bytes $start-${length - 1}/$length" else null))
+            FileInputStream(fd.fileDescriptor).use { input ->
+                var skip = start
+                while (skip > 0) {
+                    val n = input.skip(skip)
+                    if (n <= 0) break
+                    skip -= n
+                }
+                input.copyTo(out, 64 * 1024)
+            }
             out.flush()
         }
         return true
@@ -184,9 +232,10 @@ class SwapServer(
         out.flush()
     }
 
-    private fun header(code: Int, type: String, length: Long): ByteArray {
+    private fun header(code: Int, type: String, length: Long, contentRange: String? = null): ByteArray {
         val reason = when (code) {
             200 -> "OK"
+            206 -> "Partial Content"
             403 -> "Forbidden"
             404 -> "Not Found"
             else -> "Error"
@@ -195,6 +244,8 @@ class SwapServer(
             .append("HTTP/1.1 $code $reason\r\n")
             .append("Content-Type: $type\r\n")
         if (length >= 0) sb.append("Content-Length: $length\r\n")
+        if (contentRange != null) sb.append("Content-Range: $contentRange\r\n")
+        sb.append("Accept-Ranges: bytes\r\n")
         sb.append("Connection: close\r\n\r\n")
         return sb.toString().toByteArray(Charsets.US_ASCII)
     }
@@ -212,6 +263,9 @@ class SwapServer(
 
     companion object {
         const val PREFERRED_PORT = 47821
+        /** Sharing turns itself off after 10 minutes with no requests. */
+        const val IDLE_LIMIT_MS = 10 * 60 * 1000L
+        const val MAX_BAD_TRIES = 5
 
         /** Wi-Fi and hotspot addresses this phone can be reached on, best first. */
         fun localIps(): List<String> {

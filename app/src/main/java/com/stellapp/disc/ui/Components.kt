@@ -60,7 +60,10 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.dp
+import kotlin.math.abs
 import androidx.compose.ui.unit.sp
 import com.stellapp.disc.PlayerState
 import com.stellapp.disc.data.Song
@@ -370,6 +373,8 @@ fun MiniPlayer(
     onTogglePlay: () -> Unit,
     onNext: () -> Unit,
     onOpen: () -> Unit,
+    /** Swipe right on the mini player. */
+    onPrevious: (() -> Unit)? = null,
 ) {
     val song = s.current ?: return
     val primary = MaterialTheme.colorScheme.primary
@@ -381,7 +386,30 @@ fun MiniPlayer(
             .padding(horizontal = 12.dp, vertical = 8.dp)
             .fillMaxWidth()
             .neonPanel(primary, glow = 14.dp, fill = PanelSolid.copy(alpha = 0.94f))
-            .clickable(onClick = onOpen)
+            .pointerInput(onPrevious != null) {
+                // Swipe left: next track. Swipe right: previous. Swipe up: open the player.
+                var dx = 0f
+                var dy = 0f
+                detectDragGestures(
+                    onDragStart = {
+                        dx = 0f
+                        dy = 0f
+                    },
+                    onDragEnd = {
+                        val far = 56.dp.toPx()
+                        when {
+                            abs(dx) > abs(dy) && dx < -far -> onNext()
+                            abs(dx) > abs(dy) && dx > far -> onPrevious?.invoke()
+                            dy < -far * 0.7f -> onOpen()
+                        }
+                    },
+                ) { change, drag ->
+                    change.consume()
+                    dx += drag.x
+                    dy += drag.y
+                }
+            }
+            .clickable(onClickLabel = "Open player", onClick = onOpen)
     ) {
         Box(
             Modifier

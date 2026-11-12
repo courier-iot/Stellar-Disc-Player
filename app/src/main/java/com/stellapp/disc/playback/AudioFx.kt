@@ -37,6 +37,9 @@ object AudioFx {
         val bassSupported: Boolean = false,
         val bass: Int = 0,
         val visualizer: Boolean = false,
+        /** Volume levelling (Android 9+): evens out loud and quiet tracks. */
+        val leveling: Boolean = false,
+        val levelingSupported: Boolean = android.os.Build.VERSION.SDK_INT >= 28,
     )
 
     private var prefs: SharedPreferences? = null
@@ -45,6 +48,7 @@ object AudioFx {
     private var eq: Equalizer? = null
     private var bassBoost: BassBoost? = null
     private var viz: Visualizer? = null
+    private var leveler: android.media.audiofx.DynamicsProcessing? = null
     private val smooth = FloatArray(BARS)
 
     private val _state = MutableStateFlow(EqState())
@@ -64,6 +68,7 @@ object AudioFx {
                 visualizer = p.getBoolean("viz_on", false),
                 bass = p.getInt("bass", 0),
                 preset = p.getInt("preset", -1),
+                leveling = p.getBoolean("level_on", false),
             )
         }
     }
@@ -118,6 +123,7 @@ object AudioFx {
         }
 
         if (_state.value.visualizer) startVisualizer()
+        if (_state.value.leveling) startLeveler()
     }
 
     fun setEnabled(on: Boolean) {
@@ -177,6 +183,60 @@ object AudioFx {
     }
 
     /** Turns the real visualizer on/off. Needs the microphone permission to be granted first. */
+    @Synchronized
+    fun setLeveling(on: Boolean) {
+        prefs?.edit()?.putBoolean("level_on", on)?.apply()
+        _state.update { it.copy(leveling = on) }
+        if (on) startLeveler() else stopLeveler()
+    }
+
+    /**
+     * A gentle compressor plus a limiter on the whole mix: quiet tracks come up, loud ones are
+     * held back, so volume stays similar from song to song.
+     */
+    private fun startLeveler() {
+        if (android.os.Build.VERSION.SDK_INT < 28 || session <= 0 || leveler != null) return
+        try {
+            val dp = android.media.audiofx.DynamicsProcessing.Config.Builder(
+                android.media.audiofx.DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
+                2, false, 0, true, 1, false, 0, true,
+            ).build().let { android.media.audiofx.DynamicsProcessing(0, session, it) }
+            for (ch in 0 until 2) {
+                val band = dp.getMbcBandByChannelIndex(ch, 0)
+                band.setEnabled(true)
+                band.setCutoffFrequency(20_000f)
+                band.setAttackTime(15f)
+                band.setReleaseTime(350f)
+                band.setRatio(3.5f)
+                band.setThreshold(-28f)
+                band.setKneeWidth(8f)
+                band.setNoiseGateThreshold(-90f)
+                band.setExpanderRatio(1f)
+                band.setPreGain(0f)
+                band.setPostGain(9f)
+                dp.setMbcBandByChannelIndex(ch, 0, band)
+                val lim = dp.getLimiterByChannelIndex(ch)
+                lim.setEnabled(true)
+                lim.setAttackTime(1f)
+                lim.setReleaseTime(60f)
+                lim.setRatio(10f)
+                lim.setThreshold(-1.5f)
+                lim.setPostGain(0f)
+                dp.setLimiterByChannelIndex(ch, lim)
+            }
+            dp.enabled = true
+            leveler = dp
+        } catch (t: Throwable) {
+            leveler = null
+            _state.update { it.copy(levelingSupported = false) }
+        }
+    }
+
+    private fun stopLeveler() {
+        try { leveler?.release() } catch (_: Throwable) {}
+        leveler = null
+    }
+
     fun setVisualizer(on: Boolean) {
         prefs?.edit()?.putBoolean("viz_on", on)?.apply()
         _state.update { it.copy(visualizer = on) }
@@ -259,5 +319,6 @@ object AudioFx {
         eq = null
         bassBoost = null
         stopVisualizer()
+        stopLeveler()
     }
 }

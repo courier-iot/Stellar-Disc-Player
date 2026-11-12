@@ -82,6 +82,7 @@ fun SettingsScreen(
     onOpenCredits: () -> Unit,
     onUpdateFound: (com.stellapp.disc.UpdateInfo) -> Unit,
     onOpenYtSignIn: () -> Unit,
+    onOpenStats: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -99,6 +100,8 @@ fun SettingsScreen(
     val nightly by vm.nightly.collectAsStateWithLifecycle()
     var globalOpts by remember { mutableStateOf(vm.ytdlpGlobalOptions()) }
     val customVersion by CustomBackdrop.version.collectAsStateWithLifecycle()
+    val btAutoplay by vm.btAutoplay.collectAsStateWithLifecycle()
+    val wifiOnly by vm.wifiOnly.collectAsStateWithLifecycle()
     LaunchedEffect(Unit) { CustomBackdrop.refresh(context) }
     val backdropPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickVisualMedia()) { uri ->
         if (uri != null) {
@@ -249,6 +252,16 @@ fun SettingsScreen(
                             micPermission.launch(Manifest.permission.RECORD_AUDIO)
                         }
                     }
+                    ToggleRow(
+                        "Volume levelling",
+                        if (fx.levelingSupported) "Evens out quiet and loud tracks, handy for downloads from different sites" else "Needs Android 9 or newer",
+                        fx.leveling && fx.levelingSupported,
+                    ) { if (fx.levelingSupported) AudioFx.setLeveling(it) }
+                    ToggleRow(
+                        "Bluetooth auto-play",
+                        "Starts playing when Bluetooth headphones or your car connect (while Stellar Disc is open or paused in the background)",
+                        btAutoplay,
+                    ) { vm.setBtAutoplay(it) }
                 }
 
                 Section("VIDEO") {
@@ -260,6 +273,8 @@ fun SettingsScreen(
                 }
 
                 Section("UPLINK ENGINE") {
+                    ToggleRow("Wi-Fi only", "Downloads wait until you're on Wi-Fi, so they don't use mobile data", wifiOnly) { vm.setWifiOnly(it) }
+                    Spacer(Modifier.height(8.dp))
                     Text(
                         if (vm.hasJsRuntime) "✓ JavaScript runtime: QuickJS-NG built in. yt-dlp can solve YouTube's checks."
                         else "⚠ No JavaScript runtime in this build, so YouTube may fail or offer fewer formats.",
@@ -310,6 +325,7 @@ fun SettingsScreen(
                 }
 
                 Section("LIBRARY") {
+                    LinkRow("Listening stats", "Your top songs and artists, and hours listened", onOpenStats)
                     LinkRow("Rescan library", "Pick up new files right away") { vm.loadLibrary(force = true) }
                     if (!vm.hasVideoAccess()) {
                         LinkRow("Show all phone videos", "Allow video access for the Videos tab") {

@@ -17,6 +17,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
@@ -52,6 +53,8 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.QueueMusic
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Favorite
+import androidx.compose.material.icons.rounded.FavoriteBorder
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.KeyboardArrowUp
 import androidx.compose.material.icons.rounded.Pause
@@ -101,6 +104,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.CustomAccessibilityAction
 import androidx.compose.ui.semantics.contentDescription
@@ -149,6 +153,7 @@ fun NowPlayingScreen(
     val audioOnly by vm.audioOnly.collectAsStateWithLifecycle()
     val backdrop by vm.backdrop.collectAsStateWithLifecycle()
     val clearView by vm.clearView.collectAsStateWithLifecycle()
+    val favourites by vm.favourites.collectAsStateWithLifecycle()
     val song = s.current
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
@@ -183,6 +188,9 @@ fun NowPlayingScreen(
         }
     }
     val haptics = LocalHapticFeedback.current
+    // Swipe down anywhere on the disc to close; this is how far it's been pulled.
+    val pullDown = remember { Animatable(0f) }
+    val npScope = rememberCoroutineScope()
     val config = LocalConfiguration.current
     val wide = config.screenWidthDp > config.screenHeightDp
 
@@ -193,7 +201,7 @@ fun NowPlayingScreen(
                 val p = backProgress
                 scaleX = 1f - 0.08f * p
                 scaleY = 1f - 0.08f * p
-                translationY = 60.dp.toPx() * p
+                translationY = 60.dp.toPx() * p + pullDown.value.coerceAtLeast(0f)
                 shape = RoundedCornerShape((28 * p).dp)
                 clip = p > 0f
             }
@@ -231,6 +239,19 @@ fun NowPlayingScreen(
                     val pos = s.queue.indexOfFirst { it.index == s.currentIndex } + 1
                     if (s.queue.isNotEmpty()) {
                         Text("TRACK $pos / ${s.queue.size}", color = TextLo, fontFamily = Mono, fontSize = 10.sp, letterSpacing = 2.sp)
+                    }
+                }
+                if (song != null && !song.isStream) {
+                    val fav = song.id in favourites
+                    IconButton(onClick = {
+                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                        vm.toggleFavourite(song)
+                    }) {
+                        Icon(
+                            if (fav) Icons.Rounded.Favorite else Icons.Rounded.FavoriteBorder,
+                            contentDescription = if (fav) "Remove from favourites" else "Add to favourites",
+                            tint = if (fav) secondary else TextHi,
+                        )
                     }
                 }
                 IconButton(onClick = { sheet = NpSheet.QUEUE }) {
@@ -297,8 +318,48 @@ fun NowPlayingScreen(
                             scope.launch { swipe.snapTo(swipe.value + amount) }
                         }
                     }
-                    .pointerInput(hideCenter) {
-                        if (hideCenter) detectTapGestures { vm.setClearView(false) }
+                    .pointerInput(Unit) {
+                        // Down: close Now Playing. Up: open the lyrics.
+                        detectVerticalDragGestures(
+                            onDragEnd = {
+                                npScope.launch {
+                                    val v = pullDown.value
+                                    when {
+                                        v > 140.dp.toPx() -> {
+                                            onClose()
+                                            pullDown.snapTo(0f)
+                                        }
+                                        v < -90.dp.toPx() -> {
+                                            showLyrics = true
+                                            pullDown.animateTo(0f, spring(dampingRatio = 0.8f))
+                                        }
+                                        else -> pullDown.animateTo(0f, spring(dampingRatio = 0.8f))
+                                    }
+                                }
+                            },
+                            onDragCancel = { npScope.launch { pullDown.animateTo(0f) } },
+                        ) { change, amount ->
+                            change.consume()
+                            npScope.launch {
+                                // Upward pulls are tracked but barely move the screen.
+                                val next = pullDown.value + amount
+                                pullDown.snapTo(if (next < 0f) next.coerceAtLeast(-160.dp.toPx()) else next)
+                            }
+                        }
+                    }
+                    .pointerInput(hideCenter, showLyrics, song?.isVideo == true && !audioOnly) {
+                        val discShown = !hideCenter && !showLyrics && !(song?.isVideo == true && !audioOnly)
+                        detectTapGestures(
+                            onTap = { if (hideCenter) vm.setClearView(false) },
+                            onDoubleTap = if (discShown) ({
+                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                vm.togglePlay()
+                            }) else null,
+                            onLongPress = if (discShown) ({
+                                haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                                sheet = NpSheet.QUEUE
+                            }) else null,
+                        )
                     },
                 contentAlignment = Alignment.Center,
             ) {
@@ -442,6 +503,8 @@ fun NowPlayingScreen(
                 details()
             }
         }
+        // Slide up or down along the right edge to change the volume.
+        EdgeVolume(Modifier.align(Alignment.TopEnd).padding(top = 140.dp).fillMaxHeight(0.42f).width(28.dp))
     }
 
     when (sheet) {
@@ -783,6 +846,67 @@ private fun Visualizer(playing: Boolean, modifier: Modifier) {
                 brush = Brush.verticalGradient(listOf(secondary, primary), startY = size.height - h, endY = size.height),
                 topLeft = Offset(i * (w + gap), size.height - h),
                 size = Size(w, h),
+            )
+        }
+    }
+}
+
+/** A thin strip on the screen edge: drag along it to change the media volume, with a level pill. */
+@Composable
+private fun EdgeVolume(modifier: Modifier) {
+    val context = LocalContext.current
+    val am = remember { context.getSystemService(android.content.Context.AUDIO_SERVICE) as android.media.AudioManager }
+    val max = remember { am.getStreamMaxVolume(android.media.AudioManager.STREAM_MUSIC).coerceAtLeast(1) }
+    var level by remember { mutableFloatStateOf(0f) }
+    var showing by remember { mutableStateOf(false) }
+    val pillAlpha by animateFloatAsState(if (showing) 1f else 0f, tween(250), label = "vol")
+    val primary = MaterialTheme.colorScheme.primary
+    Box(
+        modifier
+            .semantics { contentDescription = "Volume. Drag up or down." }
+            .pointerInput(Unit) {
+                var acc = 0f
+                val step = 18.dp.toPx()
+                detectVerticalDragGestures(
+                    onDragStart = {
+                        acc = 0f
+                        level = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC).toFloat() / max
+                        showing = true
+                    },
+                    onDragEnd = { showing = false },
+                    onDragCancel = { showing = false },
+                ) { change, amount ->
+                    change.consume()
+                    acc += amount
+                    while (acc <= -step || acc >= step) {
+                        val up = acc < 0
+                        am.adjustStreamVolume(
+                            android.media.AudioManager.STREAM_MUSIC,
+                            if (up) android.media.AudioManager.ADJUST_RAISE else android.media.AudioManager.ADJUST_LOWER,
+                            0,
+                        )
+                        acc += if (up) step else -step
+                    }
+                    level = am.getStreamVolume(android.media.AudioManager.STREAM_MUSIC).toFloat() / max
+                }
+            },
+        contentAlignment = Alignment.CenterEnd,
+    ) {
+        Box(
+            Modifier
+                .padding(end = 6.dp)
+                .width(8.dp)
+                .fillMaxHeight()
+                .graphicsLayer { alpha = pillAlpha }
+                .clip(CircleShape)
+                .background(primary.copy(alpha = 0.18f)),
+            contentAlignment = Alignment.BottomCenter,
+        ) {
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(level.coerceIn(0f, 1f))
+                    .background(Brush.verticalGradient(accentGradient())),
             )
         }
     }

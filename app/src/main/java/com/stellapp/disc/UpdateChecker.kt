@@ -62,7 +62,10 @@ object UpdateChecker {
                 ?: return@withContext UpdateResult.Failed("Couldn't read the release version")
             val page = o.optString("html_url").ifBlank { "${AppInfo.REPO_URL}/releases" }
             if (isNewer(version, BuildConfig.VERSION_NAME)) {
-                UpdateResult.Available(UpdateInfo(version, apkUrl ?: page, page))
+                // Only ever point at an APK attached to this app's own GitHub releases, over HTTPS.
+                // (Android itself also refuses to install an update signed with a different key.)
+                val trusted = apkUrl?.takeIf { it.startsWith("https://github.com/${AppInfo.REPO}/releases/download/") }
+                UpdateResult.Available(UpdateInfo(version, trusted ?: page, page))
             } else {
                 UpdateResult.UpToDate
             }

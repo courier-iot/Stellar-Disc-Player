@@ -61,6 +61,14 @@ object PlaylistStore {
         }
     }
 
+    /** Replaces a playlist's tracks (used to undo a removal exactly). */
+    fun setSongs(id: String, songIds: List<Long>) = mutate { list ->
+        list.map { p -> if (p.id == id) p.copy(songIds = songIds) else p }
+    }
+
+    /** Puts a deleted playlist back exactly as it was. */
+    fun restore(playlist: Playlist) = mutate { list -> if (list.any { it.id == playlist.id }) list else list + playlist }
+
     fun removeSong(id: String, songId: Long) = mutate { list ->
         list.map { p -> if (p.id == id) p.copy(songIds = p.songIds - songId) else p }
     }

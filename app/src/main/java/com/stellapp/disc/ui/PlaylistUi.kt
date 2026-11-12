@@ -139,6 +139,13 @@ fun SongActionSheet(
                     Text(song.artist, color = TextLo, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
+            if (!song.isStream) {
+                val favs by vm.favourites.collectAsStateWithLifecycle()
+                SheetAction(if (song.id in favs) "♥ Remove from Favourites" else "♥ Add to Favourites") {
+                    vm.toggleFavourite(song)
+                    onDismiss()
+                }
+            }
             SheetAction("Play next") { vm.playNext(song); onDismiss() }
             SheetAction("Add to queue") { vm.enqueueSongs(listOf(song.id)); onDismiss() }
             if (!song.isStream) {
@@ -185,6 +192,73 @@ fun SongActionSheet(
     }
 }
 
+
+/** Actions for several selected songs at once. */
+@Composable
+fun ManySongsSheet(
+    songs: List<Song>,
+    playlists: List<Playlist>,
+    inPlaylistId: String?,
+    vm: PlayerViewModel,
+    onDismiss: () -> Unit,
+    onDelete: (List<Song>) -> Unit,
+) {
+    var creating by remember { mutableStateOf(false) }
+    val primary = MaterialTheme.colorScheme.primary
+    val ids = songs.map { it.id }
+    ModalBottomSheet(onDismissRequest = onDismiss, containerColor = PanelSolid, contentColor = TextHi) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(bottom = 24.dp)
+        ) {
+            Text(
+                "${songs.size} SELECTED",
+                color = primary,
+                fontWeight = FontWeight.Bold,
+                letterSpacing = 3.sp,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+            )
+            SheetAction("Play these") { vm.playList(songs, 0, shuffle = false); onDismiss() }
+            SheetAction("Shuffle these") { vm.shuffleAll(songs); onDismiss() }
+            SheetAction("Add to queue") { vm.enqueueSongs(ids); onDismiss() }
+            SheetAction("♥ Add to Favourites") { vm.favouriteMany(ids); onDismiss() }
+            if (inPlaylistId != null) {
+                SheetAction("Remove from this playlist", color = DangerRed) {
+                    vm.removeManyFromPlaylist(inPlaylistId, ids)
+                    onDismiss()
+                }
+            }
+            SheetAction("Delete from phone", color = DangerRed) {
+                onDelete(songs)
+                onDismiss()
+            }
+            SectionLabel("ADD TO PLAYLIST", Modifier.padding(horizontal = 20.dp))
+            SheetAction("+ New playlist…", color = primary) { creating = true }
+            playlists.filter { it.id != inPlaylistId }.forEach { p ->
+                SheetAction(p.name, trailing = "${p.songIds.size}") {
+                    vm.addToPlaylist(p.id, ids)
+                    vm.post("Added ${ids.size} to ${p.name}")
+                    onDismiss()
+                }
+            }
+        }
+    }
+    if (creating) {
+        NameDialog(
+            title = "NEW PLAYLIST",
+            initial = "",
+            confirmLabel = "CREATE",
+            onDismiss = { creating = false },
+        ) { name ->
+            val id = vm.createPlaylist(name)
+            vm.addToPlaylist(id, ids)
+            creating = false
+            onDismiss()
+        }
+    }
+}
 
 /** The tag editor. Changes are kept inside Stellar Disc; the files themselves aren't rewritten. */
 @Composable

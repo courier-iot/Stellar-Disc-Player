@@ -15,6 +15,7 @@ import com.stellapp.disc.data.ListenKind
 import com.stellapp.disc.data.TasteStore
 import com.stellapp.disc.playback.AudioFx
 import com.stellapp.disc.playback.PlaybackExtras
+import com.stellapp.disc.playback.LongTrackMemory
 import com.stellapp.disc.playback.QueueStore
 import com.stellapp.disc.playback.Rotation
 import com.stellapp.disc.widget.WidgetUpdater
@@ -37,6 +38,15 @@ class PlaybackService : MediaSessionService() {
     private var session: MediaSession? = null
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var errorStreak = 0
+    /** A long track that just started, waiting to jump back to where you left it. */
+    private var resumeCandidate: String? = null
+    private var audioDeviceCallback: android.media.AudioDeviceCallback? = null
+
+    private fun rememberLongPosition(p: Player) {
+        val id = p.currentMediaItem?.mediaId ?: return
+        val dur = p.duration
+        if (dur > 0) LongTrackMemory.remember(this, id, dur, p.currentPosition)
+    }
 
     // Listening tracker for the taste engine.
     private var tId = -1L
@@ -91,6 +101,11 @@ class PlaybackService : MediaSessionService() {
         tId = player.currentMediaItem?.mediaId?.toLongOrNull() ?: -1
         player.addListener(object : Player.Listener {
             override fun onMediaItemTransition(mediaItem: androidx.media3.common.MediaItem?, reason: Int) {
+                // A long track that played to the end starts from the top next time.
+                if (reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO && tId >= 0 && tDuration >= LongTrackMemory.MIN_LENGTH_MS) {
+                    LongTrackMemory.remember(this@PlaybackService, tId.toString(), tDuration, tDuration)
+                }
+                resumeCandidate = mediaItem?.mediaId
                 finishListen(natural = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT)
                 tId = mediaItem?.mediaId?.toLongOrNull() ?: -1
                 tDuration = 0
@@ -116,6 +131,16 @@ class PlaybackService : MediaSessionService() {
 
             override fun onEvents(p: Player, events: Player.Events) {
                 if (events.contains(Player.EVENT_IS_PLAYING_CHANGED) && p.isPlaying) errorStreak = 0
+                // Long tracks: pick up where you left off, and remember the spot when pausing.
+                if (events.contains(Player.EVENT_PLAYBACK_STATE_CHANGED) && p.playbackState == Player.STATE_READY) {
+                    val id = resumeCandidate
+                    if (id != null && id == p.currentMediaItem?.mediaId) {
+                        resumeCandidate = null
+                        val saved = LongTrackMemory.recall(this@PlaybackService, id)
+                        if (saved != null && p.duration >= LongTrackMemory.MIN_LENGTH_MS && p.currentPosition < 5_000) p.seekTo(saved)
+                    }
+                }
+                if (events.contains(Player.EVENT_IS_PLAYING_CHANGED) && !p.isPlaying) rememberLongPosition(p)
                 if (events.containsAny(Player.EVENT_TIMELINE_CHANGED, Player.EVENT_SHUFFLE_MODE_ENABLED_CHANGED, Player.EVENT_REPEAT_MODE_CHANGED)) {
                     QueueStore.saveQueue(this@PlaybackService, p)
                 }
@@ -130,11 +155,15 @@ class PlaybackService : MediaSessionService() {
 
         QueueStore.restore(this, player)
         WidgetUpdater.push(this, player)
+        watchBluetooth(player)
 
         scope.launch {
             while (isActive) {
                 delay(5_000)
-                if (player.isPlaying) QueueStore.savePosition(this@PlaybackService, player)
+                if (player.isPlaying) {
+                    QueueStore.savePosition(this@PlaybackService, player)
+                    rememberLongPosition(player)
+                }
             }
         }
         scope.launch {
@@ -151,6 +180,40 @@ class PlaybackService : MediaSessionService() {
         }
     }
 
+    /** Bluetooth auto-play: when headphones or a car connect, start playing (if switched on). */
+    private fun watchBluetooth(player: Player) {
+        val am = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+        val btTypes = buildSet {
+            add(android.media.AudioDeviceInfo.TYPE_BLUETOOTH_A2DP)
+            if (android.os.Build.VERSION.SDK_INT >= 31) {
+                add(android.media.AudioDeviceInfo.TYPE_BLE_HEADSET)
+                add(android.media.AudioDeviceInfo.TYPE_BLE_SPEAKER)
+            }
+        }
+        var primed = false
+        val cb = object : android.media.AudioDeviceCallback() {
+            override fun onAudioDevicesAdded(addedDevices: Array<out android.media.AudioDeviceInfo>?) {
+                // Android reports already-connected devices right after registering: ignore that first call.
+                if (!primed) {
+                    primed = true
+                    return
+                }
+                val on = getSharedPreferences("stellar_disc", MODE_PRIVATE).getBoolean("bt_autoplay", false)
+                if (!on || addedDevices.isNullOrEmpty()) return
+                if (addedDevices.any { it.isSink && it.type in btTypes } && !player.isPlaying && player.mediaItemCount > 0) {
+                    // Give the connection a moment to settle so the first second isn't lost.
+                    scope.launch {
+                        delay(1_200)
+                        if (player.playbackState == Player.STATE_IDLE) player.prepare()
+                        player.play()
+                    }
+                }
+            }
+        }
+        am.registerAudioDeviceCallback(cb, android.os.Handler(mainLooper))
+        audioDeviceCallback = cb
+    }
+
     override fun onGetSession(controllerInfo: MediaSession.ControllerInfo): MediaSession? = session
 
     override fun onTaskRemoved(rootIntent: Intent?) {
@@ -163,6 +226,8 @@ class PlaybackService : MediaSessionService() {
 
     override fun onDestroy() {
         finishListen(natural = false)
+        audioDeviceCallback?.let { (getSystemService(AUDIO_SERVICE) as android.media.AudioManager).unregisterAudioDeviceCallback(it) }
+        session?.player?.let { rememberLongPosition(it) }
         session?.player?.let { QueueStore.savePosition(this, it) }
         scope.cancel()
         PlaybackExtras.detach()

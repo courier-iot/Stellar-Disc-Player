@@ -192,7 +192,14 @@ fun HomeScreen(
     val byId = remember(songs) { songs.associateBy { it.id } }
     val picks = remember(songs, tastes) { TasteStore.picks(songs) }
     val mixes = remember(songs, tastes) { TasteStore.mixes(songs) }
-    val listGroups = remember(playlists, byId) { playlists.map { it.toGroup(byId) } }
+    val favIds by vm.favourites.collectAsStateWithLifecycle()
+    // Favourites leads the playlists row once you've hearted something.
+    val listGroups = remember(playlists, byId, favIds) {
+        val favs = favIds.mapNotNull { byId[it] }
+        val favGroup = if (favs.isEmpty()) emptyList()
+        else listOf(SongGroup("smart:favourites", "♥ Favourites", "${favs.size} tracks", favs, favs.first(), GroupKind.SMART))
+        favGroup + playlists.map { it.toGroup(byId) }
+    }
     val pinnedLists = remember(listGroups, pinnedListIds) { pinnedListIds.mapNotNull { id -> listGroups.firstOrNull { it.playlistId == id } } }
     val pinnedSongs = remember(pinnedSongIds, byId) { pinnedSongIds.mapNotNull { byId[it] } }
     val heroSeed = remember { System.nanoTime() }
@@ -379,7 +386,7 @@ fun HomeScreen(
             }
         }
 
-        MiniPlayer(s = state, onTogglePlay = vm::togglePlay, onNext = vm::next, onOpen = onOpenPlayer)
+        MiniPlayer(s = state, onTogglePlay = vm::togglePlay, onNext = vm::next, onOpen = onOpenPlayer, onPrevious = { vm.swipeTrack(false) })
         Spacer(Modifier.navigationBarsPadding())
     }
 

@@ -14,12 +14,14 @@ class StellarDiscApp : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashLog.install(this)
+        com.stellapp.disc.uplink.CookieVault.cleanup(this)
         PlaylistStore.init(this)
         LinkStore.init(this)
         MetaStore.init(this)
         PlayStats.init(this)
         TasteStore.init(this)
         PinStore.init(this)
+        com.stellapp.disc.data.FavStore.init(this)
         AudioFx.init(this)
         PlaybackExtras.init(this)
     }

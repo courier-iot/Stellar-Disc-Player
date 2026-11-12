@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -115,6 +116,7 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     var showVideo by rememberSaveable { mutableStateOf(false) }
     var showUplink by rememberSaveable { mutableStateOf(false) }
     var showCredits by rememberSaveable { mutableStateOf(false) }
+    var showStats by rememberSaveable { mutableStateOf(false) }
     var showSwap by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showEq by rememberSaveable { mutableStateOf(false) }
@@ -144,7 +146,7 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     // Only the screen on top animates: anything fully covered stops drawing, which saves battery.
     val animate = animateSetting && !inPip
     val playerUp = showPlayer && state.current != null
-    val toolUp = showUplink || showSwap || showShare || showSettings || showYtSignIn || showEq || showCredits
+    val toolUp = showUplink || showSwap || showShare || showSettings || showYtSignIn || showEq || showCredits || showStats
     val homeAnimate = animate && !(playerUp || showSearch || showGroup || toolUp || showVideo)
     val audioOnly by vm.audioOnly.collectAsStateWithLifecycle()
     // With "audio only" on, videos open in Now Playing instead of fullscreen.
@@ -162,10 +164,11 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     }
     val librarySongs by vm.songs.collectAsStateWithLifecycle()
     val allPlaylists by vm.playlists.collectAsStateWithLifecycle()
+    val favIds by vm.favourites.collectAsStateWithLifecycle()
     LaunchedEffect(showGroup, homeGroup, librarySongs, allPlaylists) {
         if (showGroup && homeGroup == null) {
             val key = homeGroupKey
-            val rebuilt = if (key != null && librarySongs.isNotEmpty()) restoreGroup(key, librarySongs, allPlaylists) else null
+            val rebuilt = if (key != null && librarySongs.isNotEmpty()) restoreGroup(key, librarySongs, allPlaylists, favIds) else null
             when {
                 rebuilt != null -> { homeGroup = rebuilt }
                 librarySongs.isNotEmpty() -> { showGroup = false }
@@ -207,8 +210,22 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
         if (state.current?.isVideo != true) showVideo = false
     }
 
+    // "What's new" once after each update (new installs just had the tour, so they skip it).
+    val versionPrefs = remember { context.getSharedPreferences("stellar_disc", android.content.Context.MODE_PRIVATE) }
+    val thisVersion = com.stellapp.disc.BuildConfig.VERSION_NAME
+    var whatsNew by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(onboarded) {
+        if (onboarded && versionPrefs.getString("last_seen_version", null) != thisVersion) {
+            whatsNew = WhatsNew.forVersion(thisVersion)
+            versionPrefs.edit().putString("last_seen_version", thisVersion).apply()
+        }
+    }
+
     if (!onboarded) {
-        OnboardingScreen(onFinish = { vm.setOnboarded() })
+        OnboardingScreen(onFinish = {
+            versionPrefs.edit().putString("last_seen_version", thisVersion).apply()
+            vm.setOnboarded()
+        })
         return
     }
 
@@ -321,12 +338,13 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
         Overlay(showSettings) {
             SettingsScreen(
                 vm = vm,
-                animate = animate && !(showEq || showCredits || showYtSignIn || showVideo),
+                animate = animate && !(showEq || showCredits || showYtSignIn || showStats || showVideo),
                 onClose = { showSettings = false },
                 onOpenEqualizer = { showEq = true },
                 onOpenCredits = { showCredits = true },
                 onUpdateFound = { update = it },
                 onOpenYtSignIn = { showYtSignIn = true },
+                onOpenStats = { showStats = true },
             )
         }
 
@@ -336,6 +354,10 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
 
         Overlay(showEq) {
             EqualizerScreen(animate = animate && !showVideo, onClose = { showEq = false })
+        }
+
+        Overlay(showStats) {
+            StatsScreen(vm = vm, animate = animate && !showVideo, onClose = { showStats = false })
         }
 
         Overlay(showCredits) {
@@ -356,6 +378,35 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
         }
 
         if (!inPip) {
+            // "Removed … UNDO" bar, above the little notes.
+            val undo by vm.undo.collectAsStateWithLifecycle()
+            LaunchedEffect(undo?.id) {
+                val id = undo?.id ?: return@LaunchedEffect
+                delay(5_000)
+                vm.dismissUndo(id)
+            }
+            AnimatedVisibility(
+                visible = undo != null,
+                enter = slideInVertically { it } + fadeIn(),
+                exit = slideOutVertically { it } + fadeOut(),
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(bottom = if (message != null) 156.dp else 96.dp, start = 24.dp, end = 24.dp),
+            ) {
+                Row(
+                    Modifier
+                        .neonPanel(MaterialTheme.colorScheme.primary, glow = 12.dp, fill = PanelSolid)
+                        .padding(start = 16.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(undo?.label ?: "", color = TextHi, fontSize = 13.sp)
+                    Spacer(Modifier.width(8.dp))
+                    TextButton(onClick = { vm.runUndo() }) {
+                        Text("UNDO", color = MaterialTheme.colorScheme.primary, fontFamily = Mono, fontWeight = FontWeight.Bold, letterSpacing = 2.sp)
+                    }
+                }
+            }
             // Little notes at the bottom of the screen.
             AnimatedVisibility(
                 visible = message != null,
@@ -384,6 +435,16 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
             delay(3_200)
             vm.consumeMessage()
         }
+    }
+
+    whatsNew?.let { notes ->
+        InfoDialog(
+            title = "WHAT'S NEW IN v$thisVersion",
+            body = notes,
+            confirm = "NICE",
+            onConfirm = { whatsNew = null },
+            onDismiss = { whatsNew = null },
+        )
     }
 
     update?.let { info ->
@@ -509,9 +570,14 @@ private fun restoreGroup(
     key: String,
     songs: List<com.stellapp.disc.data.Song>,
     playlists: List<com.stellapp.disc.data.Playlist>,
+    favourites: List<Long>,
 ): SongGroup? {
     val byId = songs.associateBy { it.id }
     return when {
+        key == "smart:favourites" -> {
+            val list = favourites.mapNotNull { byId[it] }
+            if (list.isEmpty()) null else SongGroup(key, "♥ Favourites", "${list.size} tracks", list, list.first(), GroupKind.SMART)
+        }
         key.startsWith("playlist:") -> {
             val p = playlists.firstOrNull { it.id == key.removePrefix("playlist:") } ?: return null
             val list = p.songIds.mapNotNull { byId[it] }

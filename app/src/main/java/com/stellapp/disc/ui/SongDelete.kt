@@ -17,39 +17,40 @@ import com.stellapp.disc.PlayerViewModel
 import com.stellapp.disc.data.Song
 
 /**
- * "Delete from phone" for any screen. Call the returned function with a song:
- * it asks to confirm, then Android shows its own delete prompt (Android 11+).
+ * "Delete from phone" for any screen. Call the returned function with one or more songs:
+ * it asks to confirm, then Android shows its own prompt. On Android 11+ files go to the
+ * phone's trash (restorable for about 30 days from a Files app) instead of being erased.
  */
 @Composable
-fun rememberSongDeleter(vm: PlayerViewModel): (Song) -> Unit {
+fun rememberSongsDeleter(vm: PlayerViewModel): (List<Song>) -> Unit {
     val context = LocalContext.current
-    var confirm by remember { mutableStateOf<Song?>(null) }
-    var pending by remember { mutableStateOf<Song?>(null) }
+    var confirm by remember { mutableStateOf<List<Song>?>(null) }
+    var pending by remember { mutableStateOf<List<Song>?>(null) }
 
     val launcher = rememberLauncherForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
-        val s = pending
+        val list = pending
         pending = null
-        if (result.resultCode == Activity.RESULT_OK && s != null) {
+        if (result.resultCode == Activity.RESULT_OK && list != null) {
             if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q) {
-                try { context.contentResolver.delete(s.uri, null, null) } catch (_: Exception) {}
+                list.forEach { s -> try { context.contentResolver.delete(s.uri, null, null) } catch (_: Exception) {} }
             }
-            vm.afterDelete(listOf(s.id))
+            vm.afterDelete(list.map { it.id })
         }
     }
 
-    fun delete(s: Song) {
-        pending = s
+    fun delete(list: List<Song>) {
+        pending = list
         try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                val pi = MediaStore.createDeleteRequest(context.contentResolver, listOf(s.uri))
+                val pi = MediaStore.createTrashRequest(context.contentResolver, list.map { it.uri }, true)
                 launcher.launch(IntentSenderRequest.Builder(pi.intentSender).build())
             } else {
-                context.contentResolver.delete(s.uri, null, null)
+                list.forEach { s -> context.contentResolver.delete(s.uri, null, null) }
                 pending = null
-                vm.afterDelete(listOf(s.id))
+                vm.afterDelete(list.map { it.id })
             }
         } catch (e: SecurityException) {
-            if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q && e is RecoverableSecurityException) {
+            if (Build.VERSION.SDK_INT == Build.VERSION_CODES.Q && e is RecoverableSecurityException && list.size == 1) {
                 launcher.launch(IntentSenderRequest.Builder(e.userAction.actionIntent.intentSender).build())
             } else {
                 pending = null
@@ -61,17 +62,30 @@ fun rememberSongDeleter(vm: PlayerViewModel): (Song) -> Unit {
         }
     }
 
-    confirm?.let { s ->
+    confirm?.let { list ->
+        val what = if (list.size == 1) "\"${list[0].title}\"" else "${list.size} files"
+        val where = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            "They go to your phone's trash, where a Files app can restore them for about 30 days."
+        } else {
+            "This can't be undone."
+        }
         ConfirmDialog(
-            title = "DELETE FILE",
-            body = "Delete \"${s.title}\" from your phone? This can't be undone.",
+            title = if (list.size == 1) "DELETE FILE" else "DELETE ${list.size} FILES",
+            body = "Delete $what from your phone? $where",
             confirmLabel = "DELETE",
             onDismiss = { confirm = null },
         ) {
             confirm = null
-            delete(s)
+            delete(list)
         }
     }
 
-    return { s -> if (!s.isStream) confirm = s }
+    return { list -> list.filter { !it.isStream }.takeIf { it.isNotEmpty() }?.let { confirm = it } }
+}
+
+/** Single-song version of [rememberSongsDeleter]. */
+@Composable
+fun rememberSongDeleter(vm: PlayerViewModel): (Song) -> Unit {
+    val many = rememberSongsDeleter(vm)
+    return { s -> many(listOf(s)) }
 }

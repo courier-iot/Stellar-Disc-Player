@@ -11,6 +11,10 @@ import androidx.activity.result.IntentSenderRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import com.stellapp.disc.ui.theme.PanelSolid
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.draw.clip
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
@@ -123,11 +127,12 @@ private fun playlistGroups(playlists: List<Playlist>, byId: Map<Long, Song>): Li
         SongGroup("playlist:${p.id}", p.name, "${songs.size} tracks", songs, songs.firstOrNull(), GroupKind.PLAYLIST, p.id)
     }
 
-private fun smartGroups(music: List<Song>, stats: Map<Long, PlayStat>, byId: Map<Long, Song>): List<SongGroup> {
+private fun smartGroups(music: List<Song>, stats: Map<Long, PlayStat>, byId: Map<Long, Song>, favs: List<Long> = emptyList()): List<SongGroup> {
     val recent = stats.entries.sortedByDescending { it.value.lastPlayed }.mapNotNull { byId[it.key] }.filter { it.showsInMusic }.take(50)
     val most = stats.entries.sortedByDescending { it.value.count }.mapNotNull { byId[it.key] }.filter { it.showsInMusic }.take(50)
     val added = music.sortedByDescending { it.dateAdded }.take(50)
     return listOf(
+        favs.mapNotNull { byId[it] }.let { f -> SongGroup("smart:favourites", "♥ Favourites", "${f.size} tracks", f, f.firstOrNull(), GroupKind.SMART) },
         SongGroup("smart:recent", "Recently played", "${recent.size} tracks", recent, recent.firstOrNull(), GroupKind.SMART),
         SongGroup("smart:most", "Most played", "${most.size} tracks", most, most.firstOrNull(), GroupKind.SMART),
         SongGroup("smart:added", "Recently added", "${added.size} tracks", added, added.firstOrNull(), GroupKind.SMART),
@@ -229,7 +234,8 @@ fun LibraryScreen(
     val allArtists = remember(music) { artistGroups(music) }
     val allFolders = remember(songs) { folderGroups(songs) }
     val allPlaylists = remember(playlists, byId) { playlistGroups(playlists, byId) }
-    val smart = remember(music, stats, byId) { smartGroups(music, stats, byId) }
+    val favs by vm.favourites.collectAsStateWithLifecycle()
+    val smart = remember(music, stats, byId, favs) { smartGroups(music, stats, byId, favs) }
     val shownPlaylists = remember(allPlaylists, q) { if (q.isEmpty()) allPlaylists else allPlaylists.filter { it.title.lowercase().contains(q) } }
 
     val group: SongGroup? = openKey?.let { k ->
@@ -242,6 +248,22 @@ fun LibraryScreen(
         }
     }
     BackHandler(enabled = group != null) { openKey = null }
+
+    // Multi-select: null = off, otherwise the ids picked so far.
+    var selected by remember { mutableStateOf<Set<Long>?>(null) }
+    var showSelectionSheet by remember { mutableStateOf(false) }
+    val deleteMany = rememberSongsDeleter(vm)
+    LaunchedEffect(tab, openKey) { selected = null }
+    BackHandler(enabled = selected != null) { selected = null }
+    val toggleSelect: (Song) -> Unit = { s ->
+        val cur = selected ?: emptySet()
+        selected = if (s.id in cur) cur - s.id else cur + s.id
+    }
+    val selectChip: @Composable () -> Unit = {
+        NeonChip(if (selected != null) "✓ SELECTING" else "SELECT", selected != null) {
+            selected = if (selected == null) emptySet() else null
+        }
+    }
 
     val currentId = state.current?.id
     val openMenu: (Song, String?) -> Unit = { s, pid ->
@@ -352,6 +374,11 @@ fun LibraryScreen(
                         if (group.songs[i].isVideo) playVideos(group.songs, i) else vm.playSong(group.songs[i])
                     },
                     onLongPress = { s -> openMenu(s, group.playlistId) },
+                    selected = selected,
+                    onToggle = toggleSelect,
+                    header = {
+                        Row(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) { selectChip() }
+                    },
                 )
                 tab == LibTab.PLAYLISTS -> PlaylistList(
                     smart = smart,
@@ -378,6 +405,8 @@ fun LibraryScreen(
                     playing = state.isPlaying,
                     onPlay = { i -> vm.playSong(filtered[i]) },
                     onLongPress = { s -> openMenu(s, null) },
+                    selected = selected,
+                    onToggle = toggleSelect,
                     header = {
                         Row(
                             Modifier
@@ -388,6 +417,7 @@ fun LibraryScreen(
                         ) {
                             NeonChip("▶ PLAY", false) { vm.playList(filtered, 0, shuffle = false) }
                             NeonChip("⤨ SHUFFLE", false) { vm.shuffleAll(filtered) }
+                            selectChip()
                             Spacer(Modifier.weight(1f))
                             NeonChip("SORT: ${sort.label}", false) {
                                 sort = SortMode.entries[(sort.ordinal + 1) % SortMode.entries.size]
@@ -401,13 +431,51 @@ fun LibraryScreen(
             }
         }
 
+        // Selection bar.
+        selected?.let { sel ->
+            val pool = group?.songs ?: filtered
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 6.dp)
+                    .neonPanel(MaterialTheme.colorScheme.primary, glow = 10.dp, fill = PanelSolid)
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text("${sel.size} SELECTED", color = TextHi, fontFamily = Mono, fontSize = 12.sp, modifier = Modifier.weight(1f))
+                NeonChip(if (sel.size == pool.size && pool.isNotEmpty()) "NONE" else "ALL", false) {
+                    selected = if (sel.size == pool.size) emptySet() else pool.map { it.id }.toSet()
+                }
+                NeonChip("ACTIONS", sel.isNotEmpty()) { if (sel.isNotEmpty()) showSelectionSheet = true }
+                NeonChip("DONE", false) { selected = null }
+            }
+        }
+
         MiniPlayer(
             s = state,
             onTogglePlay = vm::togglePlay,
             onNext = vm::next,
             onOpen = onOpenPlayer,
+            onPrevious = { vm.swipeTrack(false) },
         )
         Spacer(Modifier.navigationBarsPadding())
+    }
+
+    if (showSelectionSheet) {
+        val sel = selected ?: emptySet()
+        val pool = group?.songs ?: filtered
+        ManySongsSheet(
+            songs = pool.filter { it.id in sel },
+            playlists = playlists,
+            inPlaylistId = group?.playlistId,
+            vm = vm,
+            onDismiss = {
+                showSelectionSheet = false
+                selected = null
+            },
+            onDelete = { list -> deleteMany(list) },
+        )
     }
 
     menuSong?.let { s ->
@@ -423,7 +491,7 @@ fun LibraryScreen(
             }),
             onDelete = if (s.isStream) null else ({
                 menuSong = null
-                confirmDelete = s
+                deleteMany(listOf(s))
             }),
             onHideFolder = if (s.isStream) null else ({
                 menuSong = null
@@ -532,20 +600,49 @@ private fun SongList(
     onPlay: (Int) -> Unit,
     onLongPress: (Song) -> Unit,
     header: (@Composable () -> Unit)? = null,
+    /** Non-null while picking several songs: taps then tick songs instead of playing them. */
+    selected: Set<Long>? = null,
+    onToggle: (Song) -> Unit = {},
 ) {
+    val primary = MaterialTheme.colorScheme.primary
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(bottom = 12.dp),
     ) {
         if (header != null) item(key = "header") { header() }
         itemsIndexed(songs, key = { _, s -> s.id }) { i, song ->
-            SongRow(
-                song = song,
-                active = song.id == currentId,
-                playing = playing,
-                onClick = { onPlay(i) },
-                onLongClick = { onLongPress(song) },
-            )
+            if (selected == null) {
+                SongRow(
+                    song = song,
+                    active = song.id == currentId,
+                    playing = playing,
+                    onClick = { onPlay(i) },
+                    onLongClick = { onLongPress(song) },
+                )
+            } else {
+                val on = song.id in selected
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Box(
+                        Modifier
+                            .padding(start = 14.dp)
+                            .size(22.dp)
+                            .clip(SmallCut)
+                            .then(if (on) Modifier.background(primary) else Modifier.border(1.5.dp, primary.copy(alpha = 0.6f), SmallCut)),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        if (on) Text("✓", color = Void, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    }
+                    Box(Modifier.weight(1f)) {
+                        SongRow(
+                            song = song,
+                            active = on,
+                            playing = false,
+                            onClick = { onToggle(song) },
+                            onLongClick = { onToggle(song) },
+                        )
+                    }
+                }
+            }
         }
     }
 }

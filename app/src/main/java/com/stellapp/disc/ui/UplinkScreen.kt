@@ -69,6 +69,7 @@ import com.stellapp.disc.ui.theme.TextHi
 import com.stellapp.disc.ui.theme.TextLo
 import com.stellapp.disc.ui.theme.Void
 import com.stellapp.disc.uplink.DlFormat
+import com.stellapp.disc.uplink.LinkKind
 import com.stellapp.disc.uplink.DownloadJob
 import com.stellapp.disc.uplink.DownloadOptions
 import com.stellapp.disc.uplink.JobStatus
@@ -106,6 +107,15 @@ fun UplinkScreen(
     var kbps by rememberSaveable { mutableIntStateOf(saved.audioKbps) }
     var height by rememberSaveable { mutableIntStateOf(saved.maxHeight) }
     var whole by rememberSaveable { mutableStateOf(saved.wholePlaylist) }
+    // Playlist or single track? Worked out from the link itself; you can still flip it below.
+    val linkKind = remember(url) { LinkKind.of(url) }
+    LaunchedEffect(linkKind) {
+        when (linkKind) {
+            LinkKind.COLLECTION -> whole = true
+            LinkKind.SINGLE, LinkKind.SINGLE_IN_LIST -> whole = false
+            LinkKind.UNKNOWN -> Unit
+        }
+    }
     var embed by rememberSaveable { mutableStateOf(saved.embed) }
     var queue by rememberSaveable { mutableStateOf(saved.queueWhenDone) }
     var targetId by rememberSaveable { mutableStateOf<String?>(null) }
@@ -275,6 +285,15 @@ fun UplinkScreen(
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     NeonChip("GRAB EVERYTHING", whole) { whole = true }
                     NeonChip("JUST THIS ONE", !whole) { whole = false }
+                }
+                val detected = when (linkKind) {
+                    LinkKind.COLLECTION -> "Detected a playlist or album: grabbing everything."
+                    LinkKind.SINGLE -> "Detected a single track."
+                    LinkKind.SINGLE_IN_LIST -> "This track is part of a playlist. Just this one is picked; tap GRAB EVERYTHING for the whole list."
+                    LinkKind.UNKNOWN -> null
+                }
+                if (detected != null) {
+                    Text(detected, color = TextLo, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                 }
 
                 SectionLabel("SAVE AS · AUDIO")

@@ -16,6 +16,7 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import com.stellapp.disc.data.AppSettings
+import com.stellapp.disc.data.FavStore
 import com.stellapp.disc.data.LibraryTransfer
 import com.stellapp.disc.lyrics.LyricsRepository
 import com.stellapp.disc.uplink.UplinkSettings
@@ -150,6 +151,17 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     val animateBackground: StateFlow<Boolean> = settings.animate
     val lyricsAuto: StateFlow<Boolean> = settings.lyricsAuto
     val onboarded: StateFlow<Boolean> = settings.onboarded
+    val btAutoplay: StateFlow<Boolean> = settings.btAutoplay
+    val favourites: StateFlow<List<Long>> = FavStore.ids
+
+    private val _wifiOnly = MutableStateFlow(UplinkManager.wifiOnly(app))
+    val wifiOnly: StateFlow<Boolean> = _wifiOnly.asStateFlow()
+
+    /** Something that can be undone for a few seconds (shown with an UNDO button). */
+    data class Undo(val label: String, val action: () -> Unit, val id: Long = System.nanoTime())
+
+    private val _undo = MutableStateFlow<Undo?>(null)
+    val undo: StateFlow<Undo?> = _undo.asStateFlow()
 
     private val _message = MutableStateFlow<String?>(null)
     /** A short note to show at the bottom of the screen. */
@@ -296,6 +308,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     /** After the system deleted files: drop them from playlists and rescan. */
     fun afterDelete(ids: List<Long>) {
         playlists.value.forEach { p -> ids.forEach { id -> if (id in p.songIds) PlaylistStore.removeSong(p.id, id) } }
+        FavStore.remove(ids)
         loadLibrary(force = true)
         post("Deleted ${ids.size} file(s)")
     }
@@ -427,7 +440,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun removeQueueItem(index: Int) {
         val c = controller ?: return
         if (index !in 0 until c.mediaItemCount) return
+        val item = c.getMediaItemAt(index)
         c.removeMediaItem(index)
+        offerUndo("Removed from the queue") {
+            controller?.let { cc -> cc.addMediaItem(index.coerceAtMost(cc.mediaItemCount), item) }
+        }
     }
 
     fun setSpeed(speed: Float) {
@@ -507,7 +524,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setYtdlpGlobalOptions(text: String) {
         UplinkManager.setGlobalOptions(ctx, text.trim())
-        post("Saved. These options now apply to every download.")
+        val unsafe = UplinkManager.unsafeOptions(text)
+        post(
+            if (unsafe.isEmpty()) "Saved. These options now apply to every download."
+            else "Saved, but ${unsafe.joinToString()} will be ignored: options that run programs are blocked for safety."
+        )
     }
 
     fun setVideoFullscreen(on: Boolean) {
@@ -576,9 +597,59 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun createPlaylist(name: String): String = PlaylistStore.create(name)
     fun renamePlaylist(id: String, name: String) = PlaylistStore.rename(id, name)
-    fun deletePlaylist(id: String) = PlaylistStore.delete(id)
+    fun deletePlaylist(id: String) {
+        val p = playlists.value.firstOrNull { it.id == id } ?: return
+        PlaylistStore.delete(id)
+        offerUndo("Deleted \"${p.name}\"") { PlaylistStore.restore(p) }
+    }
     fun addToPlaylist(id: String, songIds: List<Long>) = PlaylistStore.addSongs(id, songIds)
-    fun removeFromPlaylist(id: String, songId: Long) = PlaylistStore.removeSong(id, songId)
+    fun removeFromPlaylist(id: String, songId: Long) {
+        val before = playlists.value.firstOrNull { it.id == id }?.songIds ?: return
+        PlaylistStore.removeSong(id, songId)
+        offerUndo("Removed from the playlist") { PlaylistStore.setSongs(id, before) }
+    }
+
+    fun removeManyFromPlaylist(id: String, songIds: Collection<Long>) {
+        val before = playlists.value.firstOrNull { it.id == id }?.songIds ?: return
+        PlaylistStore.setSongs(id, before - songIds.toSet())
+        offerUndo("Removed ${songIds.size} from the playlist") { PlaylistStore.setSongs(id, before) }
+    }
+
+    // ================= favourites =================
+
+    fun isFavourite(id: Long) = FavStore.isFav(id)
+
+    fun toggleFavourite(song: Song) {
+        if (song.isStream) return
+        post(if (FavStore.toggle(song.id)) "♥ Added to Favourites" else "Removed from Favourites")
+    }
+
+    fun favouriteMany(ids: Collection<Long>) {
+        FavStore.set(ids.toList() + FavStore.ids.value)
+        post("♥ Added ${ids.size} to Favourites")
+    }
+
+    // ================= undo =================
+
+    private fun offerUndo(label: String, action: () -> Unit) {
+        _undo.value = Undo(label, action)
+    }
+
+    fun runUndo() {
+        _undo.value?.action?.invoke()
+        _undo.value = null
+    }
+
+    fun dismissUndo(id: Long) {
+        if (_undo.value?.id == id) _undo.value = null
+    }
+
+    fun setBtAutoplay(on: Boolean) = settings.setBtAutoplay(on)
+
+    fun setWifiOnly(on: Boolean) {
+        UplinkManager.setWifiOnly(ctx, on)
+        _wifiOnly.value = on
+    }
 
     // ================= tag editor =================
 
@@ -644,6 +715,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun startDownload(options: DownloadOptions, remember: Boolean = true) {
         if (remember) uplinkSettings.save(options)
+        val unsafe = UplinkManager.unsafeOptions(options.extraArgs)
+        if (unsafe.isNotEmpty()) post("Skipping ${unsafe.joinToString()}: options that run programs are blocked for safety.")
         UplinkManager.enqueue(ctx, options)
     }
 

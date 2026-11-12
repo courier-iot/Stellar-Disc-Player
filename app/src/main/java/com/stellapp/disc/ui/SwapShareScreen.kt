@@ -145,6 +145,7 @@ private fun NearbyShare(name: String, tracks: List<Song>) {
     var error by remember(server) { mutableStateOf<String?>(null) }
     val sent by server.sent.collectAsStateWithLifecycle()
     val peers by server.peers.collectAsStateWithLifecycle()
+    val expired by server.expired.collectAsStateWithLifecycle()
 
     LaunchedEffect(server) {
         code = server.start()
@@ -162,6 +163,15 @@ private fun NearbyShare(name: String, tracks: List<Song>) {
     Spacer(Modifier.height(12.dp))
     val c = code
     when {
+        expired -> {
+            Text(
+                "Sharing switched itself off after 10 minutes with no activity, so nobody else on this Wi-Fi can connect.",
+                color = TextLo,
+                textAlign = TextAlign.Center,
+            )
+            Spacer(Modifier.height(12.dp))
+            NeonChip("SHARE AGAIN", false) { attempt++ }
+        }
         error != null -> {
             Text(error ?: "", color = DangerRed, textAlign = TextAlign.Center)
             Spacer(Modifier.height(12.dp))
