@@ -67,7 +67,8 @@ object MusicRepository {
 
             while (c.moveToNext()) {
                 val duration = c.getLong(durCol)
-                if (duration in 1 until 5_000) continue // skip tiny clips and blips
+                // Skip 0:00 (broken or unreadable) files and tiny clips under 5 seconds.
+                if (duration < 5_000) continue
                 val id = c.getLong(idCol)
                 val path = c.getString(dataCol) ?: ""
                 out += Song(
@@ -128,6 +129,7 @@ object MusicRepository {
             val sizeCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
             val dataCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
             while (c.moveToNext()) {
+                if (c.getLong(durCol) <= 0) continue // 0:00 videos are broken or unreadable
                 val id = c.getLong(idCol)
                 val path = c.getString(dataCol) ?: ""
                 val own = path.contains(appFolder) || !allVideos

@@ -2,7 +2,7 @@
 
 A cyberpunk / deep-space music player for Android. It plays the music files stored on your phone.
 
-## Features (v2.2.1)
+## Features (v2.2.2)
 
 - **Modern home:** a top bar with the "under the hood" toggle on the left, the logo in the middle, and search and settings on the right. Below that:
   - **Regular picks:** a big hero card plus a double row of picks, learned from what you finish, skip and play at each time of day.
@@ -107,6 +107,11 @@ Keep `stellardisc.jks` backed up somewhere safe and **never** commit it. If you 
 Change `appVersion` near the top of `app/build.gradle.kts` (format `vLARGE.MEDIUM.SMALL`). The version code is calculated from it, so Android always sees the new build as newer.
 
 ## Changelog
+
+### v2.2.2
+**Added:** none
+**Removed:** 0:00-length songs and videos from the library
+**Changed:** the library now skips any track Android reports as 0:00, as well as clips under 5 seconds
 
 ### v2.2.1
 **Added:** an automatic one-time yt-dlp update before the first download or stream when the bundled copy is too old for the JavaScript runtime.
