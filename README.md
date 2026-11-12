@@ -2,7 +2,7 @@
 
 A cyberpunk / deep-space music player for Android. It plays the music files stored on your phone.
 
-## Features (v2.7.0)
+## Features (v2.8.0)
 
 - **Modern home:** a top bar with the "under the hood" toggle on the left, the logo in the middle, and search and settings on the right. Below that:
   - **Regular picks:** a big hero card plus a double row of picks, learned from what you finish, skip and play at each time of day. Tap the small tab next to the heading to choose what the hero shows: Top pick, Most played, Playlist, Rare listen, Forgotten gem, Fresh arrival or Random.
@@ -24,13 +24,22 @@ A cyberpunk / deep-space music player for Android. It plays the music files stor
 - **Landscape and tablets:** Now Playing puts the disc on the left and the controls on the right when the screen is wider than it is tall.
 - **Battery friendly:** screens covered by another screen stop animating, and Battery Saver automatically slows animations down. Photo backdrops use half the memory and are released when Android needs memory back.
 - **Downloads survive restarts:** unfinished Uplink downloads resume the next time you open the app, including after Android 15's daily background-download limit.
+- **Favourites:** heart a song in Now Playing or its menu; they collect in a ♥ Favourites playlist on Home and in the library.
+- **Volume levelling** (Android 9+) evens out quiet and loud tracks. **Long tracks** (20 min+) remember where you stopped. **Bluetooth auto-play** when headphones or the car connect (optional).
+- **Undo** after removing something from the queue or a playlist, or deleting a playlist. Deleted files go to the phone's trash on Android 11+.
+- **Select several songs** in the library to play, queue, favourite, add to a playlist or delete together.
+- **Listening stats:** top songs and artists, hours listened and when you listen (Settings → Library).
+- **Gestures:** swipe the disc left/right to skip, down to close Now Playing, up for lyrics; double-tap to play/pause, long-press for the queue; slide the right edge for volume; swipe the mini player left/right to skip or up to open it.
+- **What's new** sheet after each update.
+- **Privacy & security:** YouTube sign-in is encrypted on the phone, nothing goes to Android's cloud backup, yt-dlp options that run programs are blocked, Swap turns itself off after 10 idle minutes and blocks repeated wrong codes, and crash reports leave out file names and paths.
 - **Feels nicer:** a light vibration on swipe, play and skip, Android's predictive back gesture (Now Playing shrinks as you swipe back), smoother screen transitions, and screen-reader labels and actions.
 - **Generated planet art** for tracks with no cover, a different colour per album.
 - **Playlists:** a Playlists tab. Long-press any track to play it next, add it to the queue, or add it to a playlist. Rename and delete from inside a playlist.
 - **Uplink downloader (yt-dlp):**
   - Paste a link, or use **Share → Stellar Disc** from YouTube, a browser, or any app.
   - Works with YouTube, SoundCloud, Bandcamp, Vimeo and [1,000+ other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md).
-  - Grab a whole playlist or album, or just the one item.
+  - Grab a whole playlist or album, or just the one item. Uplink works out which kind of link you pasted and picks for you.
+  - **Wi-Fi only** option, so downloads wait instead of using mobile data.
   - Audio formats: MP3, M4A, OPUS, FLAC, WAV or ORIGINAL (untouched), with a bitrate picker for MP3/M4A/OPUS.
   - Video formats: MP4 (H.264, plays anywhere) or MKV · BEST (highest-quality VP9/AV1 streams), with a max resolution from 480p to 4K.
   - Embeds title, artist and cover art.
@@ -113,6 +122,11 @@ Keep `stellardisc.jks` backed up somewhere safe and **never** commit it. If you 
 Change `appVersion` near the top of `app/build.gradle.kts` (format `vLARGE.MEDIUM.SMALL`). The version code is calculated from it, so Android always sees the new build as newer.
 
 ## Changelog
+
+### v2.8.0
+**Added:** favourites with a ♥ Favourites playlist, volume levelling, resume for long tracks, Bluetooth auto-play, undo for queue/playlist removals and playlist deletes, multi-select in the library, listening stats, Uplink Wi-Fi only, automatic playlist-or-single detection for Uplink links, a "What's new" sheet, and gestures (swipe down to close, swipe up for lyrics, double-tap to play/pause, long-press for the queue, edge volume slide, mini player swipes). Swap transfers resume if Wi-Fi drops.
+**Removed:** Android cloud backup of app data (use the app's own backup instead)
+**Changed:** the YouTube sign-in is encrypted with the phone's keystore. yt-dlp options that can run programs are blocked. Swap shuts off after 10 idle minutes and locks out repeated wrong codes. Crash reports are scrubbed of paths and file names. Update downloads only ever point at this repo's releases. Deleted files go to the system trash on Android 11+.
 
 ### v2.7.0
 **Added:** a rolling 150-song random rotation (from song 51, the oldest drops off and a new one is added). Downloads resume after the app is closed or restarted. Backups now include the backdrop, Clear view, home and hero settings and your own backdrop photo. Landscape and tablet layout for Now Playing. Predictive back, light haptics, and screen-reader actions for next and previous on the disc. Automatic tests that run before every build.
