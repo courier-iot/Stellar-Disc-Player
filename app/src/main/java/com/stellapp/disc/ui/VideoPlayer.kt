@@ -72,6 +72,7 @@ import androidx.media3.common.Player
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import com.stellapp.disc.PlayerViewModel
+import com.stellapp.disc.ui.theme.accentGradient
 import com.stellapp.disc.ui.theme.Mono
 import com.stellapp.disc.ui.theme.TextHi
 import com.stellapp.disc.ui.theme.TextLo
@@ -307,7 +308,7 @@ fun VideoPlayerScreen(vm: PlayerViewModel, inPip: Boolean, onClose: () -> Unit, 
                             Modifier
                                 .size(72.dp)
                                 .clip(CircleShape)
-                                .background(Brush.linearGradient(listOf(primary, secondary)))
+                                .background(Brush.linearGradient(accentGradient()))
                                 .pointerInput(Unit) { detectTapGestures(onTap = { vm.togglePlay() }) },
                             contentAlignment = Alignment.Center,
                         ) {

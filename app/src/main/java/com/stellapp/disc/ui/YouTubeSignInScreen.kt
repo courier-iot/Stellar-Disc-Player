@@ -35,6 +35,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import com.stellapp.disc.PlayerViewModel
+import com.stellapp.disc.ui.theme.accentGradient
 import com.stellapp.disc.ui.theme.Mono
 import com.stellapp.disc.ui.theme.PanelSolid
 import com.stellapp.disc.ui.theme.TextHi
@@ -129,7 +130,7 @@ fun YouTubeSignInScreen(vm: PlayerViewModel, onClose: () -> Unit) {
                     .then(
                         if (signedIn) Modifier
                             .neonPanel(primary, glow = 18.dp, fill = androidx.compose.ui.graphics.Color.Transparent)
-                            .background(Brush.horizontalGradient(listOf(primary, secondary)))
+                            .background(Brush.horizontalGradient(accentGradient()))
                         else Modifier.neonPanel(TextLo.copy(alpha = 0.4f), glow = 0.dp)
                     )
                     .clickable(enabled = signedIn) {

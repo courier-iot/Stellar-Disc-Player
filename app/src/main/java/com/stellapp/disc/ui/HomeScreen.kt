@@ -73,6 +73,7 @@ import com.stellapp.disc.data.Playlist
 import com.stellapp.disc.data.Song
 import com.stellapp.disc.data.Taste
 import com.stellapp.disc.data.TasteStore
+import com.stellapp.disc.ui.theme.accentGradient
 import com.stellapp.disc.ui.theme.Mono
 import com.stellapp.disc.ui.theme.PanelSolid
 import com.stellapp.disc.ui.theme.TextHi
@@ -263,8 +264,8 @@ fun HomeScreen(
                             title = hero.song.title,
                             subtitle = hero.song.artist,
                             active = state.current?.id == hero.song.id,
-                            onClick = { vm.playList(hero.queue, hero.queue.indexOf(hero.song).coerceAtLeast(0)) },
-                            onPlay = { vm.playList(hero.queue, hero.queue.indexOf(hero.song).coerceAtLeast(0)) },
+                            onClick = { vm.playSong(hero.song) },
+                            onPlay = { vm.playSong(hero.song) },
                             onLongPress = { menuSong = hero.song },
                         )
                         is Hero.OfList -> HeroCard(
@@ -292,7 +293,7 @@ fun HomeScreen(
                             verticalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
                             itemsIndexed(rowPicks, key = { _, s -> s.id }) { i, s ->
-                                PickTile(s, active = state.current?.id == s.id, playing = state.isPlaying, onClick = { vm.playList(rowPicks, i) }, onLongPress = { menuSong = s })
+                                PickTile(s, active = state.current?.id == s.id, playing = state.isPlaying, onClick = { vm.playSong(s) }, onLongPress = { menuSong = s })
                             }
                         }
                     }
@@ -349,7 +350,7 @@ fun HomeScreen(
                         song = s,
                         active = state.current?.id == s.id,
                         playing = state.isPlaying,
-                        onClick = { vm.playList(pinnedSongs, i) },
+                        onClick = { vm.playSong(s) },
                         onLongClick = { menuSong = s },
                     )
                 }
@@ -526,7 +527,7 @@ private fun HeroCard(
                 .size(56.dp)
                 .shadow(20.dp, CircleShape, ambientColor = primary, spotColor = primary)
                 .clip(CircleShape)
-                .background(Brush.linearGradient(listOf(primary, secondary)))
+                .background(Brush.linearGradient(accentGradient()))
                 .clickable(onClick = onPlay),
             contentAlignment = Alignment.Center,
         ) {
@@ -687,7 +688,7 @@ fun GroupPage(vm: PlayerViewModel, group: SongGroup, animate: Boolean, onClose: 
                         song = s,
                         active = state.current?.id == s.id,
                         playing = state.isPlaying,
-                        onClick = { vm.playList(list, i) },
+                        onClick = { vm.playSong(s) },
                         onLongClick = { menuSong = s },
                     )
                 }
@@ -810,7 +811,7 @@ fun SearchScreen(vm: PlayerViewModel, animate: Boolean, onClose: () -> Unit, onO
                 if (music.isNotEmpty()) {
                     item { SectionHead("SONGS", null) }
                     itemsIndexed(music, key = { _, s -> "s${s.id}" }) { i, s ->
-                        SongRow(s, active = state.current?.id == s.id, playing = state.isPlaying, onClick = { vm.playList(music, i) }, onLongClick = { menuSong = s })
+                        SongRow(s, active = state.current?.id == s.id, playing = state.isPlaying, onClick = { vm.playSong(s) }, onLongClick = { menuSong = s })
                     }
                 }
                 if (videos.isNotEmpty()) {

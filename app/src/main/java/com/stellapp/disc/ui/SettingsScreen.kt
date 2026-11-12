@@ -60,6 +60,7 @@ import com.stellapp.disc.UpdateChecker
 import com.stellapp.disc.UpdateResult
 import com.stellapp.disc.playback.AudioFx
 import com.stellapp.disc.playback.PlaybackExtras
+import com.stellapp.disc.ui.theme.accentGradient
 import com.stellapp.disc.ui.theme.Accents
 import com.stellapp.disc.ui.theme.Mono
 import com.stellapp.disc.ui.theme.TextHi
@@ -559,7 +560,7 @@ fun OnboardingScreen(onFinish: () -> Unit) {
                     .fillMaxWidth()
                     .height(56.dp)
                     .neonPanel(primary, glow = 18.dp, fill = Color.Transparent)
-                    .background(Brush.horizontalGradient(listOf(primary, secondary)))
+                    .background(Brush.horizontalGradient(accentGradient()))
                     .clickable { if (page < TOUR.lastIndex) page++ else onFinish() },
                 contentAlignment = Alignment.Center,
             ) {

@@ -47,6 +47,13 @@ object UplinkManager {
     private val _version = MutableStateFlow<String?>(null)
     val version: StateFlow<String?> = _version.asStateFlow()
 
+    private val _engine = MutableStateFlow(EngineState.OFF)
+    /** Whether the yt-dlp engines are powered. They only run while Uplink is open or a job is in flight. */
+    val engine: StateFlow<EngineState> = _engine.asStateFlow()
+    @Volatile private var uplinkOpen = false
+
+    private fun busy() = _jobs.value.any { it.status.active }
+
     private val _finished = MutableSharedFlow<FinishedBatch>(extraBufferCapacity = 16)
     val finished: SharedFlow<FinishedBatch> = _finished.asSharedFlow()
 
@@ -68,6 +75,8 @@ object UplinkManager {
                 if (find(id)?.status == JobStatus.QUEUED) process(app, id)
             }
             running.remove(id)
+            // Downloads that outlived the Uplink screen: power down once the last one lands.
+            powerDownIfIdle()
         }
     }
 
@@ -175,6 +184,39 @@ object UplinkManager {
         _finished.tryEmit(batch)
     }
 
+    // ---------- engine power ----------
+
+    /** Entering Uplink: bring the engines up (unpacks / checks yt-dlp + FFmpeg). */
+    suspend fun spoolUp(context: Context): Boolean {
+        uplinkOpen = true
+        _engine.value = EngineState.SPOOLING
+        val ok = ensureInit(context)
+        _engine.value = if (ok) EngineState.ONLINE else EngineState.OFF
+        return ok
+    }
+
+    /**
+     * Leaving Uplink: shut the engines off so only the player is running. If downloads are still
+     * going they keep the engines on until they finish. Returns how many are still running.
+     */
+    fun coolDown(): Int {
+        uplinkOpen = false
+        val left = _jobs.value.count { it.status.active }
+        if (left > 0) {
+            _engine.value = EngineState.HOLDING
+        } else {
+            _engine.value = EngineState.COOLING
+            powerDownIfIdle()
+        }
+        return left
+    }
+
+    private fun powerDownIfIdle() {
+        if (uplinkOpen || busy()) return
+        initialized = false
+        _engine.value = EngineState.OFF
+    }
+
     fun clearFinished() {
         _jobs.update { list -> list.filter { it.status.active } }
     }
@@ -188,6 +230,7 @@ object UplinkManager {
                 FFmpeg.getInstance().init(app)
                 initialized = true
                 _version.value = YoutubeDL.getInstance().version(app)
+                if (_engine.value == EngineState.OFF) _engine.value = EngineState.ONLINE
                 true
             } catch (e: Exception) {
                 false
@@ -196,7 +239,9 @@ object UplinkManager {
     }
 
     /** Downloads the newest yt-dlp release. Sites change often, so this fixes most failures. */
-    suspend fun updateYtDlp(context: Context): String = withContext(Dispatchers.IO) {
+    suspend fun updateYtDlp(context: Context): String = updateYtDlpInner(context).also { powerDownIfIdle() }
+
+    private suspend fun updateYtDlpInner(context: Context): String = withContext(Dispatchers.IO) {
         if (!ensureInit(context)) return@withContext "The downloader couldn't start on this device."
         try {
             val app = context.applicationContext

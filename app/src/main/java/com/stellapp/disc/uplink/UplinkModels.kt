@@ -95,3 +95,6 @@ data class DownloadJob(
 }
 
 data class FinishedBatch(val songIds: List<Long>, val queue: Boolean)
+
+/** Power state of the yt-dlp / FFmpeg engines behind Uplink. */
+enum class EngineState { OFF, SPOOLING, ONLINE, COOLING, HOLDING }

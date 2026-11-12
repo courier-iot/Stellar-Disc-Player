@@ -349,7 +349,7 @@ fun LibraryScreen(
                     currentId = currentId,
                     playing = state.isPlaying,
                     onPlay = { i ->
-                        if (group.songs[i].isVideo) playVideos(group.songs, i) else vm.playList(group.songs, i)
+                        if (group.songs[i].isVideo) playVideos(group.songs, i) else vm.playSong(group.songs[i])
                     },
                     onLongPress = { s -> openMenu(s, group.playlistId) },
                 )
@@ -376,7 +376,7 @@ fun LibraryScreen(
                     songs = filtered,
                     currentId = currentId,
                     playing = state.isPlaying,
-                    onPlay = { i -> vm.playList(filtered, i) },
+                    onPlay = { i -> vm.playSong(filtered[i]) },
                     onLongPress = { s -> openMenu(s, null) },
                     header = {
                         Row(

@@ -61,6 +61,7 @@ import com.stellapp.disc.UpdateChecker
 import com.stellapp.disc.UpdateInfo
 import com.stellapp.disc.UpdateResult
 import com.stellapp.disc.swap.SwapReceiver
+import com.stellapp.disc.uplink.UplinkManager
 import com.stellapp.disc.ui.theme.Mono
 import com.stellapp.disc.ui.theme.PanelSolid
 import com.stellapp.disc.ui.theme.TextHi
@@ -112,6 +113,16 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     var showShare by rememberSaveable { mutableStateOf(false) }
     var showSearch by rememberSaveable { mutableStateOf(false) }
     var showYtSignIn by rememberSaveable { mutableStateOf(false) }
+    // Uplink's engines spool up on the way in and cool down on the way out.
+    var engineGate by remember { mutableStateOf<EngineGate?>(null) }
+    var shownGate by remember { mutableStateOf(EngineGate.SPOOL) }
+    LaunchedEffect(engineGate) { engineGate?.let { shownGate = it } }
+    LaunchedEffect(showUplink, granted) { if (showUplink && granted) engineGate = EngineGate.SPOOL }
+    // Leaving Uplink for the player or Swap: shut the engines off without the screen.
+    val leaveUplinkQuietly: () -> Unit = {
+        UplinkManager.coolDown()
+        showUplink = false
+    }
     var homeGroup by remember { mutableStateOf<SongGroup?>(null) }
     var showGroup by rememberSaveable { mutableStateOf(false) }
     val modernHome by vm.modernHome.collectAsStateWithLifecycle()
@@ -146,7 +157,7 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
         if (text != null && libraryReady) {
             SwapReceiver.startLinks(context, text, vm.songs.value)
             vm.consumeSharedSwap()
-            showUplink = false
+            if (showUplink) leaveUplinkQuietly()
             showSwap = true
         }
     }
@@ -234,18 +245,26 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
             UplinkScreen(
                 vm = vm,
                 animate = animate,
-                onClose = { showUplink = false },
+                onClose = { engineGate = EngineGate.COOL },
                 onOpenCredits = { showCredits = true },
                 onOpenSwapList = { text ->
                     SwapReceiver.startLinks(context, text, vm.songs.value)
-                    showUplink = false
+                    leaveUplinkQuietly()
                     showSwap = true
                 },
                 onStreamStarted = { isVideo ->
-                    showUplink = false
+                    leaveUplinkQuietly()
                     if (isVideo) showVideo = true else showPlayer = true
                 },
             )
+        }
+
+        val gate = engineGate
+        AnimatedVisibility(visible = gate != null, enter = fadeIn(), exit = fadeOut()) {
+            EngineGateScreen(gate ?: shownGate, onDone = {
+                if ((gate ?: shownGate) == EngineGate.COOL) showUplink = false
+                engineGate = null
+            })
         }
 
         Overlay(showSwap && granted) {

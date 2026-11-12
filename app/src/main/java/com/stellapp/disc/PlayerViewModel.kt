@@ -123,6 +123,10 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     /** Scene drawn behind the now-playing screen. */
     val backdrop: StateFlow<com.stellapp.disc.ui.Backdrop> = _backdrop.asStateFlow()
 
+    private val _clearView = MutableStateFlow(prefs.getBoolean(KEY_CLEAR_VIEW, false))
+    /** Now Playing with the centre disc/video faded out, so the backdrop shows in full. */
+    val clearView: StateFlow<Boolean> = _clearView.asStateFlow()
+
     private val _heroMode = MutableStateFlow(
         runCatching { HeroMode.valueOf(prefs.getString(KEY_HERO_MODE, null) ?: "TOP_PICK") }.getOrDefault(HeroMode.TOP_PICK)
     )
@@ -304,6 +308,19 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         c.play()
     }
 
+    /**
+     * A single song picked on its own (not "play playlist"): play it, then keep going with a
+     * random rotation from the rest of the music library. No rules, just a random shuffle.
+     */
+    fun playSong(song: Song) {
+        if (song.isVideo || song.isStream) {
+            playList(listOf(song), 0)
+            return
+        }
+        val rest = _songs.value.filter { !it.isVideo && it.id != song.id }.shuffled()
+        playList(listOf(song) + rest, 0, shuffle = false)
+    }
+
     fun shuffleAll(list: List<Song>) {
         if (list.isEmpty()) return
         playList(list, Random.nextInt(list.size), shuffle = true)
@@ -339,6 +356,23 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun next() { controller?.seekToNext() }
 
     fun previous() { controller?.seekToPrevious() }
+
+    /** Swipe on Now Playing: jump a whole track. Returns false when there's nothing that way. */
+    fun swipeTrack(forward: Boolean): Boolean {
+        val c = controller ?: return false
+        return if (forward) {
+            if (!c.hasNextMediaItem()) return false
+            c.seekToNextMediaItem()
+            true
+        } else {
+            if (!c.hasPreviousMediaItem()) {
+                c.seekTo(0L)
+                return false
+            }
+            c.seekToPreviousMediaItem()
+            true
+        }
+    }
 
     fun seekTo(positionMs: Long) {
         val c = controller ?: return
@@ -419,9 +453,9 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         prefs.edit().putString(KEY_BACKDROP, b.name).apply()
     }
 
-    fun cycleBackdrop() {
-        val all = com.stellapp.disc.ui.Backdrop.entries
-        setBackdrop(all[(all.indexOf(_backdrop.value) + 1) % all.size])
+    fun setClearView(on: Boolean) {
+        _clearView.value = on
+        prefs.edit().putBoolean(KEY_CLEAR_VIEW, on).apply()
     }
 
     fun setHeroMode(m: HeroMode) {
@@ -888,6 +922,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         const val KEY_AUDIO_ONLY = "audio_only"
         const val KEY_BACKDROP = "player_backdrop"
         const val KEY_HERO_MODE = "hero_mode"
+        const val KEY_CLEAR_VIEW = "clear_view"
         const val KEY_HIDDEN = "hidden_folders"
         const val KEY_DL_FORMAT = "dl_format"
         const val KEY_DL_KBPS = "dl_kbps"

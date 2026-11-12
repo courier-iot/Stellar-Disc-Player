@@ -4,6 +4,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 
@@ -15,7 +16,12 @@ val TextLo = Color(0xFF8C8FB5)
 
 val Mono = FontFamily.Monospace
 
-data class Accent(val name: String, val primary: Color, val secondary: Color)
+/**
+ * An accent gradient. [primary] → [secondary] is the true gradient (play button, bars, disc rim).
+ * [ink] is the version of [secondary] used for text and icons, for gradients that end in a colour
+ * too dark to read on the dark UI (like pure black).
+ */
+data class Accent(val name: String, val primary: Color, val secondary: Color, val ink: Color = secondary)
 
 val Accents = listOf(
     Accent("Neon Cyan", Color(0xFF00F0FF), Color(0xFFFF2BD6)),
@@ -23,6 +29,11 @@ val Accents = listOf(
     Accent("Solar Flare", Color(0xFFFFB020), Color(0xFFFF4D6D)),
     Accent("Toxic Nebula", Color(0xFF39FF14), Color(0xFF00C2FF)),
     Accent("Ion Violet", Color(0xFFB388FF), Color(0xFF00F0FF)),
+    // v2.5.0
+    Accent("Obsidian Silver", Color(0xFFDDE3F5), Color(0xFF000000), ink = Color(0xFF9AA2C4)),
+    Accent("Crimson Ember", Color(0xFFE8173F), Color(0xFFFF9E3D)),
+    Accent("Glacier Comet", Color(0xFF8BE9FF), Color(0xFF4A6BFF)),
+    Accent("Rose Gold", Color(0xFFFF8FB8), Color(0xFFFFC98B)),
 )
 
 @Composable
@@ -31,8 +42,11 @@ fun DiscTheme(accentIndex: Int, content: @Composable () -> Unit) {
     val scheme = darkColorScheme(
         primary = a.primary,
         onPrimary = Void,
-        secondary = a.secondary,
+        secondary = a.ink,
         onSecondary = Void,
+        // The raw gradient end colour (may be pure black). Use accentGradient() for gradients.
+        tertiary = a.secondary,
+        onTertiary = TextHi,
         background = Void,
         onBackground = TextHi,
         surface = PanelSolid,
@@ -43,3 +57,8 @@ fun DiscTheme(accentIndex: Int, content: @Composable () -> Unit) {
     )
     MaterialTheme(colorScheme = scheme, typography = Typography(), content = content)
 }
+
+/** The accent's true two-colour gradient, start → end. */
+@Composable
+@ReadOnlyComposable
+fun accentGradient(): List<Color> = listOf(MaterialTheme.colorScheme.primary, MaterialTheme.colorScheme.tertiary)

@@ -63,6 +63,7 @@ import com.stellapp.disc.swap.SwapPhase
 import com.stellapp.disc.swap.SwapReceiver
 import com.stellapp.disc.swap.SwapSession
 import com.stellapp.disc.swap.SwapSource
+import com.stellapp.disc.ui.theme.accentGradient
 import com.stellapp.disc.ui.theme.Mono
 import com.stellapp.disc.ui.theme.TextHi
 import com.stellapp.disc.ui.theme.TextLo
@@ -184,7 +185,7 @@ private fun Intro(pasted: String, onPaste: (String) -> Unit, onScan: () -> Unit,
                 .fillMaxWidth()
                 .height(64.dp)
                 .neonPanel(primary, glow = 20.dp, fill = Color.Transparent)
-                .background(Brush.horizontalGradient(listOf(primary, secondary)))
+                .background(Brush.horizontalGradient(accentGradient()))
                 .clickable(onClick = onScan),
             contentAlignment = Alignment.Center,
         ) {

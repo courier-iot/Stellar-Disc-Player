@@ -63,6 +63,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.stellapp.disc.AppInfo
 import com.stellapp.disc.PlayerViewModel
 import com.stellapp.disc.swap.ShareText
+import com.stellapp.disc.ui.theme.accentGradient
 import com.stellapp.disc.ui.theme.Mono
 import com.stellapp.disc.ui.theme.TextHi
 import com.stellapp.disc.ui.theme.TextLo
@@ -391,7 +392,7 @@ fun UplinkScreen(
                             else Modifier.neonPanel(TextLo.copy(alpha = 0.4f), glow = 0.dp)
                         )
                         .background(
-                            if (urlOk) Brush.horizontalGradient(listOf(primary, secondary))
+                            if (urlOk) Brush.horizontalGradient(accentGradient())
                             else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
                         )
                         .clickable(enabled = urlOk) {
@@ -531,7 +532,7 @@ private fun JobCard(job: DownloadJob) {
                     Modifier
                         .fillMaxWidth(job.overallProgress)
                         .fillMaxHeight()
-                        .background(Brush.horizontalGradient(listOf(secondary, primary)))
+                        .background(Brush.horizontalGradient(accentGradient().reversed()))
                 )
             }
         }

@@ -2,7 +2,7 @@
 
 A cyberpunk / deep-space music player for Android. It plays the music files stored on your phone.
 
-## Features (v2.4.0)
+## Features (v2.5.0)
 
 - **Modern home:** a top bar with the "under the hood" toggle on the left, the logo in the middle, and search and settings on the right. Below that:
   - **Regular picks:** a big hero card plus a double row of picks, learned from what you finish, skip and play at each time of day. Tap the small tab next to the heading to choose what the hero shows: Top pick, Most played, Playlist, Rare listen, Forgotten gem, Fresh arrival or Random.
@@ -15,7 +15,9 @@ A cyberpunk / deep-space music player for Android. It plays the music files stor
 - **Nightly yt-dlp** updates (optional) and **always-on yt-dlp options** applied to every download.
 - **Audio-only videos:** play videos as sound only to save battery (toggle in Now Playing or Settings).
 - **Library:** Songs, Albums and Artists tabs, search across title/artist/album, sort by A–Z, Newest or Artist, Play all and Shuffle all.
-- **Now Playing:** album art inside spinning neon orbit rings with a moon, a choice of 8 animated backdrops built into the app (Synthwave, Nebula, Warp drive, Aurora, Black hole, Ringworld, Neon city, Deep void; tap the ✦ chip to cycle or pick in Settings → Look), animated spectrum bars, a seek bar, shuffle, and repeat (off / all / one).
+- **Now Playing:** the Stellar Disc, a spinning neon record with the cover art as its label (or a glowing star when there's no art) and pulse rings that ripple with the music. **Swipe the disc** left or right to skip tracks. **Clear view** (◐ chip) fades the disc or video away so your backdrop fills the screen; tap the empty space to bring it back. A choice of 12 animated backdrops built into the app (Synthwave, Nebula, Warp drive, Aurora, Black hole, Ringworld, Neon city, Deep void, Spiral galaxy, Pulsar, Fighter cockpit, Freighter bridge), picked in Settings → Look. Animated spectrum bars, a seek bar, shuffle, and repeat (off / all / one).
+- **Random rotation:** tap a single song (on Home, in search, in a playlist or the library) and it plays first, followed by a random shuffle of the rest of your music. ▶ PLAY / ⤨ SHUFFLE on a playlist still play just that playlist.
+- **Uplink engines power down:** yt-dlp and FFmpeg spool up (with a short spool-up screen) when you open Uplink and cool down (with a cool-down screen) when you leave, so outside Uplink only the player runs. Downloads still in progress keep the engines on until they finish.
 - **Queue:** a sheet showing the real play order (follows shuffle). Tap any track to jump to it.
 - **Background playback:** keeps playing with the screen off or the app closed. Notification, lock-screen and Bluetooth/headphone controls work, and it pauses when headphones are unplugged.
 - **Mini player** with a progress line.
@@ -57,7 +59,7 @@ A cyberpunk / deep-space music player for Android. It plays the music files stor
 - **First-run tour**, an **update checker** that looks at this repo's GitHub releases once a day, and a **crash log** you can report straight to GitHub Issues.
 - **Video playback:** downloaded MP4/MKV files play in Now Playing with the picture shown. Leave the screen and the audio keeps going.
 - **Credits & Support:** the responsible-use note, an "Update yt-dlp" button, the supported sites list, and credits and licences for every open-source part.
-- **Settings:** 5 accent themes (Neon Cyan, Synth Magenta, Solar Flare, Toxic Nebula, Ion Violet) and a toggle for the animated starfield to save battery.
+- **Settings:** 9 accent gradients (Neon Cyan, Synth Magenta, Solar Flare, Toxic Nebula, Ion Violet, Obsidian Silver (silver to pure black), Crimson Ember, Glacier Comet, Rose Gold) and a toggle for the animated starfield to save battery.
 
 Requires Android 8.0 or newer on a 64-bit phone (arm64). The APK is bigger than before (roughly 60–80 MB) because it carries Python, yt-dlp and FFmpeg.
 
@@ -107,6 +109,11 @@ Keep `stellardisc.jks` backed up somewhere safe and **never** commit it. If you 
 Change `appVersion` near the top of `app/build.gradle.kts` (format `vLARGE.MEDIUM.SMALL`). The version code is calculated from it, so Android always sees the new build as newer.
 
 ## Changelog
+
+### v2.5.0
+**Added:** Clear view in Now Playing (fade the disc or video out to see the backdrop in full; tap to bring it back). Swipe the centre of Now Playing to change tracks. Uplink engines that spool up when you open Uplink and cool down when you leave, each with its own screen. 4 accent gradients: Obsidian Silver (with pure black), Crimson Ember, Glacier Comet and Rose Gold. 4 backdrops for 12 in total: Spiral galaxy, Pulsar, Fighter cockpit and Freighter bridge. Random rotation when you start from a single song.
+**Removed:** the backdrop-cycling ✦ chip from Now Playing (backdrops are picked in Settings → Look)
+**Changed:** the Now Playing centre is now the Stellar Disc (a spinning neon record) instead of a planet in orbit rings, so there's no planet inside a planet. The Black hole backdrop's accretion disk is one continuous ring.
 
 ### v2.4.0
 **Added:** 8 animated player backdrops bundled in the app (Synthwave, Nebula, Warp drive, Aurora, Black hole, Ringworld, Neon city, Deep void), with a ✦ chip in Now Playing to cycle them and a preview picker in Settings → Look. A hero picker on Home: Top pick, Most played, Playlist, Rare listen, Forgotten gem, Fresh arrival or Random. Shooting stars, flaring bright stars and drifting nebula clouds in the starfield.

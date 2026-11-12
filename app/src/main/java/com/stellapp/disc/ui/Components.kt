@@ -61,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.stellapp.disc.PlayerState
 import com.stellapp.disc.data.Song
+import com.stellapp.disc.ui.theme.accentGradient
 import com.stellapp.disc.ui.theme.Mono
 import com.stellapp.disc.ui.theme.Panel
 import com.stellapp.disc.ui.theme.PanelSolid
@@ -377,7 +378,7 @@ fun MiniPlayer(
                 Modifier
                     .fillMaxWidth(progress)
                     .fillMaxHeight()
-                    .background(Brush.horizontalGradient(listOf(secondary, primary)))
+                    .background(Brush.horizontalGradient(accentGradient().reversed()))
             )
         }
         Row(Modifier.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {

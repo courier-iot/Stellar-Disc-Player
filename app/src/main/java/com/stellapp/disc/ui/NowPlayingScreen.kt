@@ -9,10 +9,14 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.background
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
@@ -68,6 +72,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -75,6 +80,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -100,7 +110,12 @@ import com.stellapp.disc.ui.theme.PanelSolid
 import com.stellapp.disc.ui.theme.TextHi
 import com.stellapp.disc.ui.theme.TextLo
 import com.stellapp.disc.ui.theme.Void
+import com.stellapp.disc.ui.theme.accentGradient
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlin.math.PI
+import kotlin.math.abs
+import kotlin.math.cos
 import kotlin.math.sin
 
 private enum class NpSheet { NONE, QUEUE, SLEEP, SPEED }
@@ -119,6 +134,7 @@ fun NowPlayingScreen(
     val sleepEnd by PlaybackExtras.sleepEndOfTrack.collectAsStateWithLifecycle()
     val audioOnly by vm.audioOnly.collectAsStateWithLifecycle()
     val backdrop by vm.backdrop.collectAsStateWithLifecycle()
+    val clearView by vm.clearView.collectAsStateWithLifecycle()
     val song = s.current
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
@@ -185,31 +201,107 @@ fun NowPlayingScreen(
                 }
             }
 
-            Spacer(Modifier.weight(1f))
-            when {
-                song != null && showLyrics -> LyricsPanel(vm, song, s.positionMs, Modifier.fillMaxWidth().aspectRatio(0.9f))
-                song?.isVideo == true && !audioOnly -> Box(
+            // Centre: the disc / video / lyrics. Swipe sideways to change track; with Clear view on
+            // it fades away so the backdrop shows in full (tap the empty space to bring it back).
+            val hideCenter = clearView && !showLyrics
+            val centerAlpha by animateFloatAsState(if (hideCenter) 0f else 1f, tween(700, easing = FastOutSlowInEasing), label = "clear")
+            val centerScale by animateFloatAsState(if (hideCenter) 0.82f else 1f, tween(700, easing = FastOutSlowInEasing), label = "clearScale")
+            val scope = rememberCoroutineScope()
+            val swipe = remember { Animatable(0f) }
+            var centerWidth by remember { mutableFloatStateOf(1f) }
+            var showHint by remember { mutableStateOf(false) }
+            LaunchedEffect(hideCenter) {
+                showHint = hideCenter
+                if (hideCenter) {
+                    delay(2_600)
+                    showHint = false
+                }
+            }
+            val hintAlpha by animateFloatAsState(if (showHint) 0.6f else 0f, tween(500), label = "hint")
+            Box(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .onSizeChanged { centerWidth = it.width.toFloat().coerceAtLeast(1f) }
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                scope.launch {
+                                    val v = swipe.value
+                                    if (abs(v) > centerWidth * 0.2f) {
+                                        val forward = v < 0
+                                        val dir = if (forward) -1f else 1f
+                                        swipe.animateTo(dir * centerWidth, tween(150))
+                                        if (vm.swipeTrack(forward)) {
+                                            swipe.snapTo(-dir * centerWidth)
+                                            swipe.animateTo(0f, tween(280, easing = FastOutSlowInEasing))
+                                        } else {
+                                            swipe.animateTo(0f, spring(dampingRatio = 0.6f))
+                                        }
+                                    } else {
+                                        swipe.animateTo(0f, spring(dampingRatio = 0.7f))
+                                    }
+                                }
+                            },
+                            onDragCancel = { scope.launch { swipe.animateTo(0f) } },
+                        ) { change, amount ->
+                            change.consume()
+                            scope.launch { swipe.snapTo(swipe.value + amount) }
+                        }
+                    }
+                    .pointerInput(hideCenter) {
+                        if (hideCenter) detectTapGestures { vm.setClearView(false) }
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                Box(
                     Modifier
                         .fillMaxWidth()
-                        .aspectRatio(16f / 9f)
-                        .neonPanel(primary, glow = 18.dp, fill = Color.Black)
-                        .clickable(onClick = onOpenVideo)
+                        .graphicsLayer {
+                            translationX = swipe.value
+                            val slide = (abs(swipe.value) / centerWidth).coerceIn(0f, 1f)
+                            alpha = centerAlpha * (1f - slide * 0.85f)
+                            scaleX = centerScale * (1f - slide * 0.12f)
+                            scaleY = scaleX
+                        },
+                    contentAlignment = Alignment.Center,
                 ) {
-                    VideoSurface(player, Modifier.fillMaxSize())
-                    Text(
-                        "⤢ TAP FOR FULLSCREEN",
-                        color = TextHi,
-                        fontFamily = Mono,
-                        fontSize = 10.sp,
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .background(Void.copy(alpha = 0.6f))
-                            .padding(horizontal = 6.dp, vertical = 3.dp),
-                    )
+                    when {
+                        song != null && showLyrics -> LyricsPanel(vm, song, s.positionMs, Modifier.fillMaxWidth().aspectRatio(0.9f))
+                        song?.isVideo == true && !audioOnly -> Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(16f / 9f)
+                                .neonPanel(primary, glow = 18.dp, fill = Color.Black)
+                                .then(if (hideCenter) Modifier else Modifier.clickable(onClick = onOpenVideo))
+                        ) {
+                            VideoSurface(player, Modifier.fillMaxSize())
+                            Text(
+                                "⤢ TAP FOR FULLSCREEN",
+                                color = TextHi,
+                                fontFamily = Mono,
+                                fontSize = 10.sp,
+                                modifier = Modifier
+                                    .align(Alignment.BottomEnd)
+                                    .background(Void.copy(alpha = 0.6f))
+                                    .padding(horizontal = 6.dp, vertical = 3.dp),
+                            )
+                        }
+                        else -> StellarDiscCore(song, s.isPlaying, Modifier.fillMaxWidth(0.86f).aspectRatio(1f))
+                    }
                 }
-                else -> OrbitArt(song, s.isPlaying, Modifier.fillMaxWidth(0.82f).aspectRatio(1f))
+                Text(
+                    "TAP TO BRING THE DISC BACK  ·  SWIPE TO SKIP",
+                    color = TextHi,
+                    fontFamily = Mono,
+                    fontSize = 10.sp,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 8.dp)
+                        .graphicsLayer { alpha = hintAlpha },
+                )
             }
-            Spacer(Modifier.weight(1f))
 
             Text(
                 song?.title ?: "NO SIGNAL",
@@ -241,7 +333,7 @@ fun NowPlayingScreen(
                     .horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                NeonChip("✦ ${backdrop.label.uppercase()}", false) { vm.cycleBackdrop() }
+                NeonChip(if (clearView) "◑ CLEAR VIEW" else "◐ CLEAR VIEW", clearView) { vm.setClearView(!clearView) }
                 NeonChip("LYRICS", showLyrics) { showLyrics = !showLyrics }
                 NeonChip(sleepLabel, sleepAt != null || sleepEnd) { sheet = NpSheet.SLEEP }
                 NeonChip("${s.speed}×", s.speed != 1f) { sheet = NpSheet.SPEED }
@@ -336,7 +428,7 @@ private fun Controls(vm: PlayerViewModel, s: PlayerState, primary: Color, second
                 .size(80.dp)
                 .shadow(28.dp, CircleShape, ambientColor = primary, spotColor = primary)
                 .clip(CircleShape)
-                .background(Brush.linearGradient(listOf(primary, secondary)))
+                .background(Brush.linearGradient(accentGradient()))
                 .clickable { vm.togglePlay() },
             contentAlignment = Alignment.Center,
         ) {
@@ -439,61 +531,147 @@ private fun QueueSheet(vm: PlayerViewModel, s: PlayerState, onDismiss: () -> Uni
     }
 }
 
-/** Album art inside spinning neon orbit rings with a moon circling it. Spins only while playing. */
+/**
+ * The Stellar Disc: a spinning neon record. Its label is the track's cover art, or a glowing
+ * star core when there's no art. Every ring is a complete circle, so nothing looks broken,
+ * and pulse rings ripple out with the music while it plays.
+ */
 @Composable
-private fun OrbitArt(song: Song?, playing: Boolean, modifier: Modifier) {
+private fun StellarDiscCore(song: Song?, playing: Boolean, modifier: Modifier) {
     val primary = MaterialTheme.colorScheme.primary
-    val secondary = MaterialTheme.colorScheme.secondary
+    val ink = MaterialTheme.colorScheme.secondary
+    val grad = accentGradient()
+    val art = rememberAlbumArt(song)
+    val spectrum by AudioFx.spectrum.collectAsStateWithLifecycle()
+
     val rotation = remember { Animatable(0f) }
     LaunchedEffect(playing) {
         if (playing) {
             while (true) {
-                rotation.animateTo(rotation.value + 360f, tween(16_000, easing = LinearEasing))
+                rotation.animateTo(rotation.value + 360f, tween(9_000, easing = LinearEasing))
             }
         }
     }
-    val pulse by rememberInfiniteTransition(label = "pulse").animateFloat(
-        initialValue = 0.8f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(1400, easing = FastOutSlowInEasing), RepeatMode.Reverse),
-        label = "p",
-    )
-    val glow = if (playing) pulse else 0.6f
+    val waves = rememberInfiniteTransition(label = "waves")
+    val wave by waves.animateFloat(0f, 1f, infiniteRepeatable(tween(2_600, easing = LinearEasing)), label = "w")
+    val breath by waves.animateFloat(0.75f, 1f, infiniteRepeatable(tween(1_400, easing = FastOutSlowInEasing), RepeatMode.Reverse), label = "b")
+    val live by animateFloatAsState(if (playing) 1f else 0f, tween(800), label = "live")
+    // Low end of the real spectrum when the visualizer is on, a gentle breath otherwise.
+    val kick = spectrum?.let { arr -> if (arr.isEmpty()) null else arr.take(5).average().toFloat().coerceIn(0f, 1f) }
+    val energy = (kick ?: (breath - 0.75f) * 2f) * live
 
     Box(modifier, contentAlignment = Alignment.Center) {
         Canvas(Modifier.fillMaxSize()) {
             val r = size.minDimension / 2f
+            val disc = r * 0.80f
+            // Glow.
             drawCircle(
                 brush = Brush.radialGradient(
-                    listOf(primary.copy(alpha = 0.38f * glow), secondary.copy(alpha = 0.14f * glow), Color.Transparent),
+                    listOf(primary.copy(alpha = 0.22f + 0.18f * energy), ink.copy(alpha = 0.08f), Color.Transparent),
                     center = center,
                     radius = r,
                 ),
                 radius = r,
             )
+            // Pulse rings rippling outwards.
+            for (k in 0 until 2) {
+                val p = (wave + k * 0.5f) % 1f
+                drawCircle(
+                    primary.copy(alpha = (1f - p) * 0.4f * live),
+                    radius = disc * (1.02f + 0.2f * p),
+                    style = Stroke((1.5f + 2f * energy).dp.toPx()),
+                )
+            }
+            // Thin full orbit with a comet riding it.
+            val orbit = r * 0.96f
+            drawCircle(primary.copy(alpha = 0.18f), radius = orbit, style = Stroke(1.dp.toPx()))
+            val cometDeg = rotation.value * 1.6f
+            for (i in 0 until 6) {
+                drawArc(
+                    color = grad[0].copy(alpha = 0.5f * (1f - i / 6f)),
+                    startAngle = cometDeg - (i + 1) * 7f,
+                    sweepAngle = 7f,
+                    useCenter = false,
+                    topLeft = Offset(center.x - orbit, center.y - orbit),
+                    size = Size(orbit * 2, orbit * 2),
+                    style = Stroke((2.5f - i * 0.3f).dp.toPx(), cap = StrokeCap.Round),
+                )
+            }
+            val ca = cometDeg * PI.toFloat() / 180f
+            val comet = Offset(center.x + cos(ca) * orbit, center.y + sin(ca) * orbit)
+            drawCircle(Color.White, 3.dp.toPx(), comet)
+            drawCircle(primary.copy(alpha = 0.35f), 7.dp.toPx(), comet)
+
+            // The record.
+            drawCircle(
+                brush = Brush.radialGradient(listOf(Color(0xFF1A1630), Color(0xFF08070F)), center = center, radius = disc),
+                radius = disc,
+            )
+            for (i in 0 until 20) {
+                val gr = disc * (0.47f + i * 0.026f)
+                drawCircle(Color.White.copy(alpha = if (i % 4 == 0) 0.07f else 0.03f), radius = gr, style = Stroke(1f))
+            }
+            // Light catching the grooves, turning with the disc.
             rotate(rotation.value, pivot = center) {
                 drawCircle(
-                    color = primary.copy(alpha = 0.8f),
-                    radius = r * 0.86f,
-                    style = Stroke(width = 2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(28f, 18f))),
+                    brush = Brush.sweepGradient(
+                        listOf(
+                            Color.Transparent, primary.copy(alpha = 0.22f), Color.Transparent, Color.Transparent,
+                            ink.copy(alpha = 0.16f), Color.Transparent, Color.Transparent,
+                        ),
+                        center = center,
+                    ),
+                    radius = disc * 0.73f,
+                    style = Stroke(disc * 0.5f),
                 )
-                drawCircle(secondary, radius = 5.dp.toPx(), center = Offset(center.x + r * 0.86f, center.y))
-                drawCircle(secondary.copy(alpha = 0.3f), radius = 10.dp.toPx(), center = Offset(center.x + r * 0.86f, center.y))
+                // Neon rim in the accent's true gradient.
+                drawCircle(Brush.sweepGradient(listOf(grad[0], grad[1], grad[0]), center = center), radius = disc, style = Stroke(3.dp.toPx()))
             }
-            rotate(-rotation.value * 0.6f, pivot = center) {
-                val arcTopLeft = Offset(center.x - r * 0.95f, center.y - r * 0.95f)
-                val arcSize = Size(r * 1.9f, r * 1.9f)
-                val arcStroke = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
-                drawArc(secondary.copy(alpha = 0.75f), 0f, 70f, false, arcTopLeft, arcSize, style = arcStroke)
-                drawArc(primary.copy(alpha = 0.6f), 180f, 40f, false, arcTopLeft, arcSize, style = arcStroke)
+            drawCircle(primary.copy(alpha = 0.22f + 0.3f * energy), radius = disc * 1.015f, style = Stroke(6.dp.toPx()))
+
+            // No cover art: a glowing star sits in the label instead.
+            if (art == null) {
+                val label = disc * 0.42f
+                drawCircle(
+                    brush = Brush.radialGradient(listOf(lerp(primary, Color.Black, 0.55f), Color(0xFF0B0918)), center = center, radius = label),
+                    radius = label,
+                )
+                drawCircle(
+                    brush = Brush.radialGradient(
+                        listOf(Color.White, lerp(primary, Color.White, 0.4f).copy(alpha = 0.8f), primary.copy(alpha = 0.25f), Color.Transparent),
+                        center = center,
+                        radius = label * (0.55f + 0.2f * energy),
+                    ),
+                    radius = label * (0.55f + 0.2f * energy),
+                )
+                rotate(rotation.value * 0.5f, pivot = center) {
+                    val flare = label * (0.95f + 0.15f * energy)
+                    val thin = label * 0.07f
+                    drawOval(Color.White.copy(alpha = 0.75f), Offset(center.x - flare, center.y - thin), Size(flare * 2, thin * 2))
+                    drawOval(Color.White.copy(alpha = 0.75f), Offset(center.x - thin, center.y - flare), Size(thin * 2, flare * 2))
+                }
+                drawCircle(Brush.sweepGradient(listOf(grad[0], grad[1], grad[0]), center = center), radius = label, style = Stroke(2.dp.toPx()))
             }
         }
-        AlbumArt(
-            song,
+        if (art != null) {
+            Image(
+                bitmap = art,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize(0.336f)
+                    .graphicsLayer { rotationZ = rotation.value }
+                    .clip(CircleShape)
+                    .border(2.dp, Brush.sweepGradient(grad + grad[0]), CircleShape),
+            )
+        }
+        // Spindle hole.
+        Box(
             Modifier
-                .fillMaxSize(0.70f)
-                .border(2.dp, Brush.sweepGradient(listOf(primary, secondary, primary)), CircleShape),
-            shape = CircleShape,
+                .fillMaxSize(0.05f)
+                .clip(CircleShape)
+                .background(Void)
+                .border(1.dp, primary.copy(alpha = 0.7f), CircleShape)
         )
     }
 }
@@ -502,7 +680,7 @@ private fun OrbitArt(song: Song?, playing: Boolean, modifier: Modifier) {
 @Composable
 private fun Visualizer(playing: Boolean, modifier: Modifier) {
     val primary = MaterialTheme.colorScheme.primary
-    val secondary = MaterialTheme.colorScheme.secondary
+    val secondary = MaterialTheme.colorScheme.tertiary
     val spectrum by AudioFx.spectrum.collectAsStateWithLifecycle()
     val level by animateFloatAsState(if (playing) 1f else 0.06f, tween(600), label = "lvl")
     var t by remember { mutableFloatStateOf(0f) }
