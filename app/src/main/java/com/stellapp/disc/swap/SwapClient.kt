@@ -6,25 +6,42 @@ import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
+import java.net.ConnectException
+import java.net.NoRouteToHostException
+import java.net.SocketTimeoutException
 
 /** Talks to another phone's [SwapServer]. */
 object SwapClient {
 
+    /** Why the last [connect] failed, in plain words. Null if it worked. */
+    @Volatile var lastProblem: String? = null
+        private set
+
     /** Tries each address in the QR code. Returns the working base URL and the track list. */
     suspend fun connect(p: Pairing): Pair<String, RemoteManifest>? = withContext(Dispatchers.IO) {
+        lastProblem = null
+        val problems = mutableListOf<String>()
         for (ip in p.ips) {
             val base = "http://$ip:${p.port}"
             try {
-                val raw = getBytes("$base/manifest?t=${p.token}")
+                val raw = getBytes(base, "/manifest?t=${p.token}")
                 val key = p.keyBytes()
                 val text = if (key != null) String(SwapCrypto.open(key, raw), Charsets.UTF_8) else String(raw, Charsets.UTF_8)
                 return@withContext base to parseManifest(text)
-            } catch (_: Exception) {
+            } catch (e: Exception) {
+                problems += "$ip: ${explain(e)}"
             }
         }
+        lastProblem = problems.joinToString("\n").ifEmpty { "The QR code has no addresses in it." }
         null
+    }
+
+    private fun explain(e: Exception): String = when (e) {
+        is SocketTimeoutException -> "no answer (different network, or the router keeps devices apart)"
+        is NoRouteToHostException -> "not reachable from this network"
+        is ConnectException -> "refused (their share screen may have closed)"
+        is javax.crypto.AEADBadTagException -> "the code didn't match (scan a fresh one)"
+        else -> e.message ?: e.javaClass.simpleName
     }
 
     /**
@@ -57,16 +74,13 @@ object SwapClient {
     private suspend fun fetchOnce(base: String, token: String, track: RemoteTrack, dest: File, key: ByteArray?, onProgress: (Float) -> Unit) =
         withContext(Dispatchers.IO) {
             val have = if (dest.exists()) dest.length() else 0L
-            val conn = URL("$base/file/${track.index}?t=$token").openConnection() as HttpURLConnection
-            conn.connectTimeout = 5_000
-            conn.readTimeout = 30_000
-            if (have > 0) conn.setRequestProperty("Range", "bytes=$have-")
-            try {
-                val code = conn.responseCode
+            val (host, port) = hostPort(base)
+            LanHttp.get(host, port, "/file/${track.index}?t=$token", rangeFrom = have).use { conn ->
+                val code = conn.code
                 if (code != 200 && code != 206) throw IOException("The other phone said $code")
                 val resuming = code == 206 && have > 0
-                val total = if (resuming) have + conn.contentLengthLong.coerceAtLeast(0L) else (conn.contentLengthLong.takeIf { it > 0 } ?: track.size)
-                conn.inputStream.use { input ->
+                val total = if (resuming) have + conn.contentLength.coerceAtLeast(0L) else (conn.contentLength.takeIf { it > 0 } ?: track.size)
+                conn.body.let { input ->
                     java.io.FileOutputStream(dest, resuming).use { out ->
                         val buf = ByteArray(64 * 1024)
                         var read = if (resuming) have else 0L
@@ -87,34 +101,25 @@ object SwapClient {
                     }
                 }
                 onProgress(1f)
-            } finally {
-                conn.disconnect()
             }
         }
 
     private const val RETRIES = 4
 
-    private fun getBytes(url: String): ByteArray {
-        val conn = URL(url).openConnection() as HttpURLConnection
-        conn.connectTimeout = 2_500
-        conn.readTimeout = 60_000 // the other phone fingerprints its files first
-        try {
-            if (conn.responseCode != 200) throw IOException("HTTP ${conn.responseCode}")
-            return conn.inputStream.use { it.readBytes() }
-        } finally {
-            conn.disconnect()
-        }
+    /** "http://192.168.1.5:47821" → ("192.168.1.5", 47821). */
+    internal fun hostPort(base: String): Pair<String, Int> {
+        val hp = base.substringAfter("://").substringBefore("/")
+        val host = hp.substringBeforeLast(":")
+        val port = hp.substringAfterLast(":").toIntOrNull() ?: throw IOException("Bad address: $base")
+        return host to port
     }
 
-    private fun getText(url: String): String {
-        val conn = URL(url).openConnection() as HttpURLConnection
-        conn.connectTimeout = 2_500
-        conn.readTimeout = 60_000 // the other phone fingerprints its files first
-        try {
-            if (conn.responseCode != 200) throw IOException("HTTP ${conn.responseCode}")
-            return conn.inputStream.bufferedReader().use { it.readText() }
-        } finally {
-            conn.disconnect()
+    private fun getBytes(base: String, pathAndQuery: String): ByteArray {
+        val (host, port) = hostPort(base)
+        // The other phone fingerprints its files before it answers, so allow a long first read.
+        LanHttp.get(host, port, pathAndQuery, connectTimeoutMs = 4_000, readTimeoutMs = 60_000).use { r ->
+            if (r.code != 200) throw IOException(if (r.code == 403) "the code didn't match (scan a fresh one)" else "the other phone said ${r.code}")
+            return r.body.readBytes()
         }
     }
 }

@@ -2,7 +2,7 @@
 
 A cyberpunk / deep-space music player for Android. It plays the music files stored on your phone.
 
-## Features (v3.1.0)
+## Features (v3.1.1)
 
 - **Modern home:** a top bar with the "under the hood" toggle on the left, the logo in the middle, and search and settings on the right. Below that:
   - **Regular picks:** a big hero card plus a double row of picks, learned from what you finish, skip and play at each time of day. Tap the small tab next to the heading to choose what the hero shows: Top pick, Most played, Playlist, Rare listen, Forgotten gem, Fresh arrival or Random.
@@ -129,6 +129,11 @@ Keep `stellardisc.jks` backed up somewhere safe and **never** commit it. If you 
 Change `appVersion` near the top of `app/build.gradle.kts` (format `vLARGE.MEDIUM.SMALL`). The version code is calculated from it, so Android always sees the new build as newer.
 
 ## Changelog
+
+### v3.1.1
+**Added:** connection details on the Swap "No signal" screen (what went wrong for each address tried). Unit tests for the new LAN client.
+**Removed:** nothing
+**Changed:** Nearby Swap now connects. Android blocks plain `http://` for modern apps, so the receiving phone's requests never left it; Swap now uses a small direct socket client (`swap/LanHttp.kt`). Transfers were already end-to-end encrypted, so no app-wide "allow insecure traffic" exception was added.
 
 ### v3.1.0
 **Added:** a ⇄ SHARE chip and share icon on playlist pages opened from the home screen (QR code or links). A "Send one of yours" list on the Swap screen. The mini player on playlist, mix and search pages.

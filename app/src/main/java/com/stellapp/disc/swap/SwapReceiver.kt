@@ -55,7 +55,11 @@ object SwapReceiver {
         job = scope.launch {
             val conn = SwapClient.connect(p)
             if (conn == null) {
-                fail("Couldn't reach the other phone. Check you're both on the same Wi-Fi (or you've joined their hotspot), and that their share screen is still open.")
+                fail(
+                    "Couldn't reach the other phone. Check you're both on the same Wi-Fi (or you've joined their hotspot), " +
+                        "and that their share screen is still open. Guest and public Wi-Fi often keep phones apart; a hotspot always works." +
+                        (SwapClient.lastProblem?.let { "\n\nDetails:\n$it" } ?: ""),
+                )
                 return@launch
             }
             base = conn.first

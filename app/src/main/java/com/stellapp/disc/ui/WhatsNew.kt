@@ -3,6 +3,11 @@ package com.stellapp.disc.ui
 /** Shown once after each update. Keep the newest version first. */
 object WhatsNew {
     val notes: Map<String, String> = linkedMapOf(
+        "3.1.1" to """
+            CHANGED
+            • Fixed: Nearby Swap couldn't connect to the other phone at all
+            • If a connection still fails, the error now says why for each address it tried
+        """.trimIndent(),
         "3.1.0" to """
             ADDED
             • Share a playlist from its page: tap ⇄ SHARE or the share icon for its QR code or links
