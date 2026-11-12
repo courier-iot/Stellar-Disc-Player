@@ -113,6 +113,7 @@ fun UplinkScreen(
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
     var subs by rememberSaveable { mutableStateOf(saved.subtitles) }
     var subLangs by rememberSaveable { mutableStateOf(saved.subLangs) }
+    var skipExisting by rememberSaveable { mutableStateOf(saved.skipExisting) }
     var streaming by remember { mutableStateOf(false) }
     var streamError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -156,6 +157,7 @@ fun UplinkScreen(
                 extraArgs = extra,
                 subtitles = subs,
                 subLangs = subLangs,
+                skipExisting = skipExisting,
             )
         )
         url = ""
@@ -345,6 +347,12 @@ fun UplinkScreen(
                     NeonTextField(newName, { newName = it }, placeholder = "Playlist name (optional)")
                 }
                 Spacer(Modifier.height(6.dp))
+                ToggleRow(
+                    title = "Skip what I already have",
+                    subtitle = "Doesn't re-download things you got before, and removes new copies of songs already in your library",
+                    checked = skipExisting,
+                    onChange = { skipExisting = it },
+                )
                 ToggleRow(
                     title = "Queue it up when done",
                     subtitle = "Adds the new tracks to what's playing",

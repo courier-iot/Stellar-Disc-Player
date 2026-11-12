@@ -2,7 +2,7 @@
 
 A cyberpunk / deep-space music player for Android. It plays the music files stored on your phone.
 
-## Features (v2.2.2)
+## Features (v2.3.0)
 
 - **Modern home:** a top bar with the "under the hood" toggle on the left, the logo in the middle, and search and settings on the right. Below that:
   - **Regular picks:** a big hero card plus a double row of picks, learned from what you finish, skip and play at each time of day.
@@ -107,6 +107,11 @@ Keep `stellardisc.jks` backed up somewhere safe and **never** commit it. If you 
 Change `appVersion` near the top of `app/build.gradle.kts` (format `vLARGE.MEDIUM.SMALL`). The version code is calculated from it, so Android always sees the new build as newer.
 
 ## Changelog
+
+### v2.3.0
+**Added:** a "Skip what I already have" option in Uplink (on by default), which uses yt-dlp's download archive to skip items you've already downloaded (tracked separately for audio and video, and forgotten when you delete the file), plus a post-download duplicate check that removes a new file if you already have the same song and still adds your existing copy to the target playlist. Delete from phone now works from Home, Search and the playlist and mix pages.
+**Removed:** the playlist position ("3 - ") from downloaded file names and titles
+**Changed:** titles like "Artist - Song" with no artist tag are now split into artist and title, and " - Topic" is dropped from YouTube artist names.
 
 ### v2.2.2
 **Added:** none

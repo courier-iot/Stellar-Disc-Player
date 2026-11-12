@@ -4,6 +4,8 @@ import android.content.Context
 import android.content.Intent
 import androidx.core.content.ContextCompat
 import com.stellapp.disc.data.LinkStore
+import com.stellapp.disc.data.MusicRepository
+import com.stellapp.disc.swap.SongMatcher
 import com.stellapp.disc.data.PlaylistStore
 import com.yausername.ffmpeg.FFmpeg
 import com.yausername.youtubedl_android.YoutubeDL
@@ -287,12 +289,16 @@ object UplinkManager {
             if (value == null) request.addOption(key) else request.addOption(key, value)
         }
 
+        if (o.skipExisting) request.addOption("--download-archive", ArchiveStore.prepare(context, o.format.isVideo))
+
         update(id) { it.copy(status = JobStatus.DOWNLOADING, message = "Opening channel…") }
         var lastError: String? = null
         var failure: String? = null
+        var alreadyHave = 0
         try {
             YoutubeDL.getInstance().execute(request, processId = id) { progress, _, line ->
                 if (line.startsWith("ERROR:")) lastError = line.removePrefix("ERROR:").trim()
+                if (line.contains("already been recorded in the archive")) alreadyHave++
                 handleLine(id, progress, line)
             }
         } catch (e: Exception) {
@@ -307,44 +313,81 @@ object UplinkManager {
         val files = collectMedia(dir)
         if (files.isEmpty()) {
             dir.deleteRecursively()
-            finish(context, id) { it.copy(status = JobStatus.FAILED, message = failure ?: lastError ?: "Nothing was downloaded.") }
+            if (alreadyHave > 0) {
+                finish(context, id) { it.copy(status = JobStatus.DONE, progress = 1f, message = "Already in your library · skipped $alreadyHave") }
+            } else {
+                finish(context, id) { it.copy(status = JobStatus.FAILED, message = failure ?: lastError ?: "Nothing was downloaded.") }
+            }
             return
         }
 
         update(id) { it.copy(status = JobStatus.SAVING, progress = 1f, message = "Docking ${files.size} file(s) into your library…") }
         LinkStore.init(context)
         val ids = ArrayList<Long>()
+        val archiveKeys = HashMap<Long, String>()
         for (f in files) {
             val savedId = MediaSaver.save(context, f, o.format.isVideo) ?: continue
             ids += savedId
+            val info = readInfo(f)
             // Remember the source link so the track can be shared as a link later.
-            val link = readSourceLink(f) ?: if (!o.wholePlaylist || files.size == 1) o.url.trim() else null
+            val link = info?.first ?: if (!o.wholePlaylist || files.size == 1) o.url.trim() else null
             link?.let { LinkStore.put(savedId, it) }
+            // Remember it for the download archive, so it's skipped next time.
+            info?.second?.let {
+                archiveKeys[savedId] = it
+                ArchiveStore.put(context, savedId, it, o.format.isVideo)
+            }
         }
         dir.deleteRecursively()
+
+        // Near-identical copies of songs you already had: remove the new one, keep yours.
+        val replaced = HashMap<Long, Long>()
+        if (o.skipExisting && ids.isNotEmpty()) {
+            update(id) { it.copy(message = "Checking for duplicates…") }
+            val library = try { MusicRepository.loadSongs(context, allVideos = false) } catch (e: Exception) { emptyList() }
+            val fresh = ids.toSet()
+            library.filter { it.id in fresh }.forEach { new ->
+                val twin = library.firstOrNull { it.id !in fresh && it.isVideo == new.isVideo && SongMatcher.isSameSong(it, new) }
+                if (twin != null) {
+                    try {
+                        context.contentResolver.delete(new.uri, null, null)
+                        replaced[new.id] = twin.id
+                        // Your copy now stands in for that link, so it's skipped next time.
+                        archiveKeys[new.id]?.let { key -> ArchiveStore.put(context, twin.id, key, o.format.isVideo) }
+                    } catch (_: Exception) {
+                    }
+                }
+            }
+        }
+        val kept = ids.filter { it !in replaced }
+        val forLists = ids.map { replaced[it] ?: it }.distinct()
 
         val playlistId = when (val t = o.target) {
             PlaylistTarget.None -> null
             is PlaylistTarget.Existing -> t.id
             is PlaylistTarget.New -> PlaylistStore.create(t.name)
         }
-        if (playlistId != null && ids.isNotEmpty()) PlaylistStore.addSongs(playlistId, ids)
+        if (playlistId != null && forLists.isNotEmpty()) PlaylistStore.addSongs(playlistId, forLists)
 
         val where = if (o.format.isVideo) "Movies" else "Music"
-        val partial = if (failure != null) " · some items failed: $failure" else ""
+        val partial = buildString {
+            if (replaced.isNotEmpty()) append(" · removed ${replaced.size} duplicate(s) you already had")
+            if (alreadyHave > 0) append(" · skipped $alreadyHave already in library")
+            if (failure != null) append(" · some items failed: $failure")
+        }
         finish(context, id) {
             if (ids.isEmpty()) {
                 it.copy(status = JobStatus.FAILED, message = "Downloaded, but couldn't save to $where/${com.stellapp.disc.AppInfo.FOLDER}.")
             } else {
                 it.copy(
                     status = JobStatus.DONE,
-                    savedIds = ids,
+                    savedIds = kept,
                     item = it.itemCount,
-                    message = "Saved ${ids.size} to $where/${com.stellapp.disc.AppInfo.FOLDER}$partial",
+                    message = "Saved ${kept.size} to $where/${com.stellapp.disc.AppInfo.FOLDER}$partial",
                 )
             }
         }
-        if (ids.isNotEmpty()) _finished.tryEmit(FinishedBatch(ids, o.queueWhenDone))
+        if (ids.isNotEmpty()) _finished.tryEmit(FinishedBatch(forLists, o.queueWhenDone))
     }
 
     private fun buildArgs(o: DownloadOptions, dir: File): List<Pair<String, String?>> {
@@ -447,12 +490,16 @@ object UplinkManager {
         }
     }
 
-    private fun readSourceLink(media: File): String? = try {
+    /** From yt-dlp's .info.json: (source link, download-archive key like "youtube abc123"). */
+    private fun readInfo(media: File): Pair<String?, String?>? = try {
         val info = File(media.parentFile, media.nameWithoutExtension + ".info.json")
         if (!info.exists()) null
         else JSONObject(info.readText()).let { o ->
-            o.optString("webpage_url").ifBlank { o.optString("original_url") }
-        }.takeIf { it.startsWith("http") }
+            val link = o.optString("webpage_url").ifBlank { o.optString("original_url") }.takeIf { it.startsWith("http") }
+            val extractor = o.optString("extractor_key").ifBlank { o.optString("extractor") }.lowercase()
+            val vid = o.optString("id")
+            link to (if (extractor.isNotBlank() && vid.isNotBlank()) "$extractor $vid" else null)
+        }
     } catch (e: Exception) {
         null
     }

@@ -24,7 +24,7 @@ object MusicRepository {
         val out = ArrayList<Song>()
         out += try { loadAudio(context) } catch (e: Exception) { emptyList() }
         out += try { loadVideos(context, allVideos) } catch (e: Exception) { emptyList() }
-        out
+        out.map { TitleFix.apply(it) }
     }
 
     @Suppress("DEPRECATION")

@@ -753,6 +753,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         queueWhenDone = prefs.getBoolean(KEY_DL_QUEUE, false),
         subtitles = prefs.getBoolean(KEY_DL_SUBS, true),
         subLangs = prefs.getString(KEY_DL_SUBLANGS, "en.*") ?: "en.*",
+        skipExisting = prefs.getBoolean(KEY_DL_SKIP, true),
     )
 
     fun startDownload(options: DownloadOptions, remember: Boolean = true) {
@@ -766,6 +767,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
                 .putBoolean(KEY_DL_QUEUE, options.queueWhenDone)
                 .putBoolean(KEY_DL_SUBS, options.subtitles)
                 .putString(KEY_DL_SUBLANGS, options.subLangs)
+                .putBoolean(KEY_DL_SKIP, options.skipExisting)
                 .apply()
         }
         UplinkManager.enqueue(ctx, options)
@@ -865,5 +867,6 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         const val KEY_DL_QUEUE = "dl_queue"
         const val KEY_DL_SUBS = "dl_subs"
         const val KEY_DL_SUBLANGS = "dl_sublangs"
+        const val KEY_DL_SKIP = "dl_skip_existing"
     }
 }

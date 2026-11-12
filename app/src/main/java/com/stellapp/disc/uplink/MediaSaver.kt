@@ -41,7 +41,7 @@ object MediaSaver {
             MediaStore.Audio.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
         }
         val values = ContentValues().apply {
-            put(MediaStore.MediaColumns.DISPLAY_NAME, file.name)
+            put(MediaStore.MediaColumns.DISPLAY_NAME, cleanName(file))
             put(MediaStore.MediaColumns.MIME_TYPE, mime)
             put(MediaStore.MediaColumns.RELATIVE_PATH, relativePath)
             put(MediaStore.MediaColumns.IS_PENDING, 1)
@@ -63,7 +63,7 @@ object MediaSaver {
     private suspend fun saveLegacy(context: Context, file: File, mime: String, dirName: String): Long? {
         val base = Environment.getExternalStoragePublicDirectory(dirName)
         val destDir = File(base, AppInfo.FOLDER).apply { mkdirs() }
-        var dest = File(destDir, file.name)
+        var dest = File(destDir, cleanName(file))
         var n = 1
         while (dest.exists()) {
             dest = File(destDir, "${file.nameWithoutExtension} ($n).${file.extension}")
@@ -76,6 +76,10 @@ object MediaSaver {
             }
         }
     }
+
+    /** Drops the playlist position yt-dlp put in front ("3 - Song.mp3" -> "Song.mp3"). */
+    private fun cleanName(file: File): String =
+        file.name.replace(Regex("""^\d{1,4} - """), "").ifBlank { file.name }
 
     private fun fallbackMime(ext: String, isVideo: Boolean): String = when (ext) {
         "opus", "ogg", "oga" -> "audio/ogg"

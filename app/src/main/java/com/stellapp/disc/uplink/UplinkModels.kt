@@ -42,6 +42,8 @@ data class DownloadOptions(
     /** Embed subtitles into video downloads. */
     val subtitles: Boolean = false,
     val subLangs: String = "en.*",
+    /** Skip things already downloaded, and remove near-identical copies of songs you have. */
+    val skipExisting: Boolean = true,
 )
 
 /** A direct, temporary media link resolved by yt-dlp for streaming without downloading. */
@@ -66,6 +68,7 @@ data class UplinkPrefs(
     val queueWhenDone: Boolean = false,
     val subtitles: Boolean = true,
     val subLangs: String = "en.*",
+    val skipExisting: Boolean = true,
 )
 
 enum class JobStatus {

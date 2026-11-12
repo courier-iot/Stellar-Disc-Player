@@ -49,6 +49,15 @@ object SongMatcher {
         }
     }
 
+    /**
+     * True when two library entries are the same song: matching title/artist
+     * and lengths within 3 seconds (both must be known).
+     */
+    fun isSameSong(a: Song, b: Song): Boolean {
+        if (a.durationMs <= 0 || b.durationMs <= 0 || abs(a.durationMs - b.durationMs) > 3_000) return false
+        return similar(keys(a.title, a.artist), keys(b.title, b.artist))
+    }
+
     private fun keys(title: String, artist: String): Keys {
         val a = if (artist.isBlank() || artist.equals("Unknown artist", ignoreCase = true)) "" else norm(artist)
         val t = norm(title)

@@ -120,6 +120,7 @@ fun HomeScreen(
     var menuSong by remember { mutableStateOf<Song?>(null) }
     var editing by remember { mutableStateOf<Song?>(null) }
     var creating by remember { mutableStateOf(false) }
+    val deleteSong = rememberSongDeleter(vm)
 
     Column(
         Modifier
@@ -284,6 +285,14 @@ fun HomeScreen(
             onEdit = if (s.isStream) null else ({
                 menuSong = null
                 editing = s
+            }),
+            onDelete = if (s.isStream) null else ({
+                menuSong = null
+                deleteSong(s)
+            }),
+            onHideFolder = if (s.isStream) null else ({
+                menuSong = null
+                vm.hideFolder(s.folder)
             }),
         )
     }
@@ -460,6 +469,7 @@ fun GroupPage(vm: PlayerViewModel, group: SongGroup, animate: Boolean, onClose: 
     var menuSong by remember { mutableStateOf<Song?>(null) }
     var editing by remember { mutableStateOf<Song?>(null) }
     var saving by remember { mutableStateOf(false) }
+    val deleteSong = rememberSongDeleter(vm)
 
     BackHandler(onBack = onClose)
 
@@ -536,6 +546,10 @@ fun GroupPage(vm: PlayerViewModel, group: SongGroup, animate: Boolean, onClose: 
                 menuSong = null
                 editing = s
             }),
+            onDelete = if (s.isStream) null else ({
+                menuSong = null
+                deleteSong(s)
+            }),
         )
     }
     editing?.let { s -> EditInfoDialog(s, vm) { editing = null } }
@@ -559,6 +573,8 @@ fun SearchScreen(vm: PlayerViewModel, animate: Boolean, onClose: () -> Unit, onO
     var query by rememberSaveable { mutableStateOf("") }
     val focus = remember { FocusRequester() }
     var menuSong by remember { mutableStateOf<Song?>(null) }
+    var editing by remember { mutableStateOf<Song?>(null) }
+    val deleteSong = rememberSongDeleter(vm)
     LaunchedEffect(Unit) {
         try {
             focus.requestFocus()
@@ -651,8 +667,23 @@ fun SearchScreen(vm: PlayerViewModel, animate: Boolean, onClose: () -> Unit, onO
     }
 
     menuSong?.let { s ->
-        SongActionSheet(song = s, playlists = playlists, inPlaylistId = null, vm = vm, onDismiss = { menuSong = null })
+        SongActionSheet(
+            song = s,
+            playlists = playlists,
+            inPlaylistId = null,
+            vm = vm,
+            onDismiss = { menuSong = null },
+            onEdit = if (s.isStream) null else ({
+                menuSong = null
+                editing = s
+            }),
+            onDelete = if (s.isStream) null else ({
+                menuSong = null
+                deleteSong(s)
+            }),
+        )
     }
+    editing?.let { s -> EditInfoDialog(s, vm) { editing = null } }
 }
 
 @Composable
