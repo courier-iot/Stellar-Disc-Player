@@ -61,8 +61,8 @@ jobs:
         run: |
           gh release delete "v${VERSION}" -y --cleanup-tag || true
           gh release create "v${VERSION}" "StellarDisc-v${VERSION}.apk" \
-            --title "Stellar Disc v${VERSION} (build ${{ github.run_number }})" \
-            --notes "Download StellarDisc-v${VERSION}.apk below and install it on your phone."
+            --title "v${VERSION}" \
+            --notes ""
 
       - name: Remove keystore
         if: always()
