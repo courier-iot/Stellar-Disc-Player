@@ -29,6 +29,7 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) {
             vm.handleShare(intent)
             vm.handlePlayRequest(intent)
+            vm.handleUplinkRequest(intent)
         }
         setContent {
             val accent by vm.accentIndex.collectAsStateWithLifecycle()
@@ -54,6 +55,7 @@ class MainActivity : ComponentActivity() {
         super.onNewIntent(intent)
         vm.handleShare(intent)
         vm.handlePlayRequest(intent)
+        vm.handleUplinkRequest(intent)
     }
 
     /** Leaving the app while a fullscreen video plays pops it into a floating window. */

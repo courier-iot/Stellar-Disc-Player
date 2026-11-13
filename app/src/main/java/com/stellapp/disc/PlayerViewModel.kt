@@ -685,6 +685,14 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         _solverFromGithub.value = on
     }
 
+    private val _assistantDownloads = MutableStateFlow(UplinkManager.assistantDownloads(app))
+    val assistantDownloads: StateFlow<Boolean> = _assistantDownloads.asStateFlow()
+
+    fun setAssistantDownloads(on: Boolean) {
+        UplinkManager.setAssistantDownloads(ctx, on)
+        _assistantDownloads.value = on
+    }
+
     fun setWifiOnly(on: Boolean) {
         UplinkManager.setWifiOnly(ctx, on)
         _wifiOnly.value = on
@@ -769,6 +777,50 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
         val url = Regex("""https?://\S+""").find(text)?.value ?: return
         _sharedUrl.value = url
+    }
+
+    /**
+     * "Download Midnight City by M83" from Stella (action com.stellapp.disc.action.UPLINK): a link, or words to
+     * search YouTube for, as music or video at an Autopilot quality. With "Let assistants start downloads" on
+     * it goes straight into the queue; otherwise Uplink opens filled in and you tap Download.
+     */
+    fun handleUplinkRequest(intent: Intent?) {
+        if (intent?.action != ACTION_UPLINK) return
+        val link = intent.getStringExtra("url")?.trim().orEmpty()
+        val words = intent.getStringExtra("query")?.trim().orEmpty()
+        val url = when {
+            link.startsWith("http://") || link.startsWith("https://") -> link
+            words.isNotEmpty() -> "ytsearch1:" + words.take(200)
+            else -> return
+        }
+        val saved = uplinkSettings.load()
+        val video = when (intent.getStringExtra("kind")?.lowercase()) {
+            "video" -> true
+            "music", "audio" -> false
+            else -> saved.simpleVideo
+        }
+        val quality = when (intent.getStringExtra("quality")?.lowercase()) {
+            "best" -> com.stellapp.disc.uplink.SimpleQuality.BEST
+            "balanced" -> com.stellapp.disc.uplink.SimpleQuality.BALANCED
+            "saver", "data saver", "data_saver" -> com.stellapp.disc.uplink.SimpleQuality.SAVER
+            else -> saved.simpleQuality
+        }
+        val play = intent.getBooleanExtra("queue_when_done", false)
+        if (!UplinkManager.assistantDownloads(ctx)) {
+            uplinkSettings.saveSimple(true, video, quality)   // Uplink opens on Autopilot with these choices
+            _sharedUrl.value = url
+            post("Check the details and tap Download")
+            return
+        }
+        val preset = com.stellapp.disc.uplink.simplePreset(video, quality)
+        startDownload(DownloadOptions(
+            url = url, format = preset.format, audioKbps = preset.kbps, maxHeight = preset.maxHeight,
+            wholePlaylist = com.stellapp.disc.uplink.LinkKind.of(url) == com.stellapp.disc.uplink.LinkKind.COLLECTION,
+            embed = true, target = com.stellapp.disc.uplink.PlaylistTarget.None, queueWhenDone = play,
+            extraArgs = "", subtitles = saved.subtitles, subLangs = saved.subLangs, skipExisting = true,
+        ), remember = false)
+        post("Uplink: downloading " + (if (words.isNotEmpty() && link.isEmpty()) "\"$words\"" else "the link") +
+            (if (play) ", then adding it to your queue" else ""))
     }
 
     /** A play request waiting for the player to connect (the app was just opened to play something). */
@@ -879,6 +931,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     private companion object {
         const val KEY_AUDIO_ONLY = "audio_only"
         const val KEY_HIDDEN = "hidden_folders"
+        const val ACTION_UPLINK = "com.stellapp.disc.action.UPLINK"
     }
 }
 

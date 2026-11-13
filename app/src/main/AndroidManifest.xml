@@ -52,6 +52,11 @@
                 <action android:name="android.media.action.MEDIA_PLAY_FROM_SEARCH" />
                 <category android:name="android.intent.category.DEFAULT" />
             </intent-filter>
+            <!-- "Download ... with Uplink" from Stella (StellAI) -->
+            <intent-filter>
+                <action android:name="com.stellapp.disc.action.UPLINK" />
+                <category android:name="android.intent.category.DEFAULT" />
+            </intent-filter>
             <!-- "Share" a link from any app straight into Uplink -->
             <intent-filter android:label="Uplink to Stellar Disc">
                 <action android:name="android.intent.action.SEND" />

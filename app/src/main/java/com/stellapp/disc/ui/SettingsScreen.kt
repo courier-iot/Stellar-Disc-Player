@@ -113,6 +113,7 @@ fun SettingsScreen(
     val uiStyle by vm.uiStyle.collectAsStateWithLifecycle()
     val inkAccent by vm.inkAccent.collectAsStateWithLifecycle()
     val wifiOnly by vm.wifiOnly.collectAsStateWithLifecycle()
+    val assistantDownloads by vm.assistantDownloads.collectAsStateWithLifecycle()
     val strictOptions by vm.strictOptions.collectAsStateWithLifecycle()
     val solverFromGithub by vm.solverFromGithub.collectAsStateWithLifecycle()
     val solverMissing by UplinkManager.solverMissing.collectAsStateWithLifecycle()
@@ -340,6 +341,9 @@ fun SettingsScreen(
                     Text(status, color = if (statusOk) primary else DangerRed, fontSize = 13.sp)
                     Spacer(Modifier.height(10.dp))
                     ToggleRow("Wi-Fi only", "Downloads wait until you're on Wi-Fi, so they don't use mobile data", wifiOnly) { vm.setWifiOnly(it) }
+                    ToggleRow("Let assistants start downloads",
+                        "When Stella (StellAI) or another app asks Uplink for a song, download it straight away. Off: Uplink opens filled in and you tap Download. Any app on this phone can send these requests.",
+                        assistantDownloads) { vm.setAssistantDownloads(it) }
                     Spacer(Modifier.height(10.dp))
                     Text("YouTube sign-in", color = TextHi, fontSize = 14.sp)
                     Text(

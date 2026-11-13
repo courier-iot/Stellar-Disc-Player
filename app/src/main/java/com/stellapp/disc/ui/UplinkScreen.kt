@@ -153,7 +153,9 @@ fun UplinkScreen(
         if (t != null && t != NEW_TARGET && playlists.none { it.id == t }) targetId = null
     }
 
-    val urlOk = url.trim().let { it.startsWith("http://") || it.startsWith("https://") } && !ShareText.looksLikeList(url)
+    // Links, or a YouTube search Stella filled in ("ytsearch1:midnight city m83": the top result)
+    val urlOk = url.trim().let { it.startsWith("http://") || it.startsWith("https://") ||
+        (it.startsWith("ytsearch1:") && it.length > 10) } && !ShareText.looksLikeList(url)
 
     fun start() {
         val t = targetId

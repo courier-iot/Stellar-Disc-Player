@@ -31,7 +31,7 @@ Requires Android 8.0 or newer on a 64-bit phone. The app checks for updates once
 - **Download with one tap.** Share a link to Stellar Disc, pick *Music* or *Video* and *Best*, *Balanced* or *Data saver*. If something fails, it says why in plain words.
 - **Share with friends.** Show a QR code; on the same Wi-Fi, their phone checks what they already have and receives only the rest.
 - **Moving phones?** Send your music, videos, playlists, favourites and settings to a new phone. You see whether it fits before anything is sent.
-- **Ask for a song by name.** "Play Bohemian Rhapsody", "play some Daft Punk", "play my Gym playlist": Stella (StellAI), Google Assistant, Android Auto and other assistants can start music from your library, and "skip" or "pause" works too.
+- **Ask for a song by name.** "Play Bohemian Rhapsody", "play some Daft Punk", "play my Gym playlist": Stella (StellAI), Google Assistant, Android Auto and other assistants can start music from your library, and "skip" or "pause" works too. Stella can also send songs to Uplink ("download Midnight City by M83"); it opens filled in for you to confirm, or downloads straight away with *Settings → Let assistants start downloads*.
 - **Kind to your battery.** Pure-black mode for OLED, calmer animations in Battery Saver, and downloads that can wait for Wi-Fi.
 
 **For power users**

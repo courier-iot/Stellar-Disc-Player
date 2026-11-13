@@ -161,6 +161,13 @@ object UplinkManager {
 
     @Volatile private var strictCache: Boolean? = null
 
+    /** Off: a download asked for by Stella or another app opens Uplink filled in, and you tap Download. */
+    fun assistantDownloads(context: Context): Boolean = prefs(context).getBoolean("dl_assistant_auto", false)
+
+    fun setAssistantDownloads(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean("dl_assistant_auto", on).apply()
+    }
+
     fun wifiOnly(context: Context): Boolean = prefs(context).getBoolean("dl_wifi_only", false)
 
     fun setWifiOnly(context: Context, on: Boolean) {
