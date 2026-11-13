@@ -71,6 +71,8 @@ class SwapServer(
     val expired: StateFlow<Boolean> = _expired.asStateFlow()
 
     @Volatile private var lastActivity = System.currentTimeMillis()
+    /** A move gives the new phone time to choose (it also checks in every minute while you pick). */
+    private val idleLimit = if (move != null) MOVE_IDLE_LIMIT_MS else IDLE_LIMIT_MS
     private val activeTransfers = java.util.concurrent.atomic.AtomicInteger(0)
     /** Wrong-code attempts per address; after [MAX_BAD_TRIES] that address is ignored. */
     private val badTries = java.util.concurrent.ConcurrentHashMap<String, Int>()
@@ -97,7 +99,7 @@ class SwapServer(
             scope.launch {
                 while (isActive && !socket.isClosed) {
                     delay(15_000)
-                    if (activeTransfers.get() == 0 && System.currentTimeMillis() - lastActivity > IDLE_LIMIT_MS) {
+                    if (activeTransfers.get() == 0 && System.currentTimeMillis() - lastActivity > idleLimit) {
                         _expired.value = true
                         stop()
                     }
@@ -205,6 +207,8 @@ class SwapServer(
 
                 when {
                     path == "/manifest" -> respond(out, 200, "application/octet-stream", SwapCrypto.seal(key, manifestJson))
+                    // Keep-alive from a new phone that's still choosing what to bring.
+                    path == "/ping" -> respond(out, 200, "text/plain", "ok".toByteArray())
                     path == "/backup" && move != null -> {
                         val text = try { move.backup() } catch (e: Exception) { "" }
                         respond(out, 200, "application/octet-stream", SwapCrypto.seal(key, text.toByteArray(Charsets.UTF_8)))
@@ -300,6 +304,7 @@ class SwapServer(
         const val PREFERRED_PORT = 47821
         /** Sharing turns itself off after 10 minutes with no requests. */
         const val IDLE_LIMIT_MS = 10 * 60 * 1000L
+        const val MOVE_IDLE_LIMIT_MS = 60 * 60 * 1000L
         const val MAX_BAD_TRIES = 5
 
         /** Wi-Fi and hotspot addresses this phone can be reached on, best first. */

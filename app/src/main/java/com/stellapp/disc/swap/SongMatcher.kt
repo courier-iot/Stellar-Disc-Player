@@ -28,7 +28,8 @@ object SongMatcher {
             links.forEach { (id, url) -> put(normUrl(url), id) }
         }
         val hashCache = HashMap<Long, String?>()
-        val prepared = library.map { it to keys(it.title, it.artist) }
+        // Indexed once, so each incoming track checks only same-named songs (not the whole library).
+        val index = TagIndex(library, { it.title }, { it.artist }, { it.durationMs })
 
         remote.map { r ->
             // 1. Exact same file
@@ -43,8 +44,7 @@ object SongMatcher {
                 byLink[normUrl(l)]?.let { id -> byId[id] }?.let { return@map TrackMatch(MatchKind.HAVE, it) }
             }
             // 3. Same song, different file
-            val rk = keys(r.title, r.artist)
-            val hit = prepared.firstOrNull { (local, lk) -> similar(lk, rk) && durationOk(local.durationMs, r.durationMs) }?.first
+            val hit = index.find(r.title, r.artist, r.durationMs)
             // No fingerprint (a whole-library move): the same song at exactly the same size is the same file.
             if (hit != null && r.hash == null && r.size > 0 && hit.size == r.size) return@map TrackMatch(MatchKind.HAVE, hit)
             if (hit != null) TrackMatch(MatchKind.PROBABLY, hit) else TrackMatch(MatchKind.NEW, null)
@@ -58,6 +58,51 @@ object SongMatcher {
     fun isSameSong(a: Song, b: Song): Boolean {
         if (a.durationMs <= 0 || b.durationMs <= 0 || abs(a.durationMs - b.durationMs) > 3_000) return false
         return similar(keys(a.title, a.artist), keys(b.title, b.artist))
+    }
+
+    /**
+     * Finds the first item (in list order) that [similar] to a title/artist with a close enough
+     * length. Same answer as scanning the whole list, but looks up candidates by exact key.
+     */
+    internal class TagIndex<T>(
+        private val items: List<T>,
+        title: (T) -> String,
+        artist: (T) -> String,
+        private val duration: (T) -> Long,
+    ) {
+        private val tagKeys = items.map { keys(title(it), artist(it)) }
+        private val byTitle = HashMap<String, MutableList<Int>>()
+        private val byCombo = HashMap<String, MutableList<Int>>()
+
+        init {
+            tagKeys.forEachIndexed { i, k ->
+                if (k.title.isNotEmpty()) {
+                    byTitle.getOrPut(k.title) { ArrayList(1) }.add(i)
+                    byCombo.getOrPut(k.combo) { ArrayList(1) }.add(i)
+                }
+            }
+        }
+
+        fun find(title: String, artist: String, durationMs: Long): T? {
+            val rk = keys(title, artist)
+            if (rk.title.isEmpty()) return null
+            // similar() is true only when one of these exact keys lines up.
+            val candidates = sortedSetOf<Int>()
+            byTitle[rk.title]?.let { candidates.addAll(it) }
+            byCombo[rk.title]?.let { candidates.addAll(it) }
+            byTitle[rk.combo]?.let { candidates.addAll(it) }
+            byCombo[rk.combo]?.let { candidates.addAll(it) }
+            for (i in candidates) {
+                if (similar(tagKeys[i], rk) && durationOk(duration(items[i]), durationMs)) return items[i]
+            }
+            return null
+        }
+
+        /** The old way, kept for tests: scan everything in order. */
+        fun findByScan(title: String, artist: String, durationMs: Long): T? {
+            val rk = keys(title, artist)
+            return items.indices.firstOrNull { similar(tagKeys[it], rk) && durationOk(duration(items[it]), durationMs) }?.let { items[it] }
+        }
     }
 
     private fun keys(title: String, artist: String): Keys {

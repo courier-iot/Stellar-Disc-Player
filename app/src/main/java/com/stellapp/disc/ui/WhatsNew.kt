@@ -3,6 +3,11 @@ package com.stellapp.disc.ui
 /** Shown once after each update. Keep the newest version first. */
 object WhatsNew {
     val notes: Map<String, String> = linkedMapOf(
+        "3.2.1" to """
+            CHANGED
+            • Moving phones: the old phone now waits up to an hour while you choose, instead of 10 minutes
+            • The "already have it?" check is much faster on big libraries
+        """.trimIndent(),
         "3.2.0" to """
             ADDED
             • Move to a new phone: send your music, videos, playlists and settings over Wi-Fi

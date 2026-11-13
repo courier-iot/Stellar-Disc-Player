@@ -108,6 +108,24 @@ object SwapReceiver {
             move = manifest.isMove,
             groups = manifest.groups,
         )
+        if (manifest.isMove && source == SwapSource.NEARBY) keepAlive()
+    }
+
+    private var keepAliveJob: Job? = null
+
+    /** While you pick what to move, check in with the old phone every minute so it stays on. */
+    private fun keepAlive() {
+        keepAliveJob?.cancel()
+        keepAliveJob = scope.launch {
+            while (true) {
+                kotlinx.coroutines.delay(60_000)
+                val s = _session.value ?: break
+                if (!s.move || s.phase != SwapPhase.REVIEW) break
+                val b = base ?: break
+                val t = token ?: break
+                SwapClient.ping(b, t)
+            }
+        }
     }
 
     // ---------- review controls ----------

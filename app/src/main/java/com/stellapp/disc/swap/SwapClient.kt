@@ -161,6 +161,15 @@ object SwapClient {
 
     private const val RETRIES = 4
 
+    /** Tells the other phone we're still here (it switches sharing off when nobody calls). */
+    suspend fun ping(base: String, token: String) = withContext(Dispatchers.IO) {
+        try {
+            val (host, port) = hostPort(base)
+            LanHttp.get(host, port, "/ping?t=$token", connectTimeoutMs = 4_000, readTimeoutMs = 8_000, bind = binder(host)).use { }
+        } catch (_: Exception) {
+        }
+    }
+
     /** The old phone's backup file (move to a new phone), decrypted. */
     suspend fun fetchBackup(base: String, token: String, key: ByteArray?): String = withContext(Dispatchers.IO) {
         val raw = getBytes(base, "/backup?t=$token")
