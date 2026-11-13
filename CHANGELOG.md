@@ -2,6 +2,12 @@
 
 Every release of Stellar Disc, newest first. Download builds from [Releases](https://github.com/courier-iot/Stellar-Disc-Player/releases).
 
+### v3.4.0
+(v3.4.0 rather than v3.3.0, which was already used for unreleased work folded into v3.2.0.)
+**Added:** play by name for voice assistants: "play Bohemian Rhapsody", "play some Daft Punk", "play the album Discovery", "play my Gym playlist" or just "play music" from Stella (StellAI), Google Assistant, Android Auto and others finds the songs in your library and plays them (a song keeps going with more by the same artist). Tests for the matching.
+**Removed:** nothing
+**Changed:** the player accepts play requests that carry a search instead of a file; everything the app plays itself works as before.
+
 ### v3.2.1
 **Added:** a keep-alive ping while the new phone is choosing what to move. Tests proving the faster matcher picks exactly what the old one did.
 **Removed:** nothing

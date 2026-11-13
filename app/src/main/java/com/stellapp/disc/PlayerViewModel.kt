@@ -227,6 +227,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             }
             controller = c
             _player.value = c
+            pendingPlay?.let { (q, f) -> pendingPlay = null; playFromSearch(c, q, f) }
             applyAudioOnly(c)
             c.addListener(object : Player.Listener {
                 override fun onEvents(player: Player, events: Player.Events) {
@@ -768,6 +769,33 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         }
         val url = Regex("""https?://\S+""").find(text)?.value ?: return
         _sharedUrl.value = url
+    }
+
+    /** A play request waiting for the player to connect (the app was just opened to play something). */
+    private var pendingPlay: Pair<String, String?>? = null
+
+    /**
+     * "Play X" from Stella or another assistant (android.media.action.MEDIA_PLAY_FROM_SEARCH): the player
+     * service looks the request up in the library (see PlaybackService.onAddMediaItems) and plays it.
+     */
+    fun handlePlayRequest(intent: Intent?) {
+        if (intent?.action != android.provider.MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH) return
+        val query = intent.getStringExtra(android.app.SearchManager.QUERY).orEmpty()
+        val focus = intent.getStringExtra(android.provider.MediaStore.EXTRA_MEDIA_FOCUS)
+        val c = controller
+        if (c == null) pendingPlay = query to focus else playFromSearch(c, query, focus)
+    }
+
+    private fun playFromSearch(c: MediaController, query: String, focus: String?) {
+        val extras = android.os.Bundle().apply { if (focus != null) putString(android.provider.MediaStore.EXTRA_MEDIA_FOCUS, focus) }
+        val item = androidx.media3.common.MediaItem.Builder()
+            .setRequestMetadata(androidx.media3.common.MediaItem.RequestMetadata.Builder()
+                .setSearchQuery(query).setExtras(extras).build())
+            .build()
+        c.setMediaItems(listOf(item))
+        c.prepare()
+        c.play()
+        post(if (query.isBlank()) "Shuffling your library" else "Looking for \"$query\"…")
     }
 
     fun consumeSharedSwap() { _sharedSwap.value = null }

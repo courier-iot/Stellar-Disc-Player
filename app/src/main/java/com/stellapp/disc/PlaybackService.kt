@@ -15,6 +15,7 @@ import androidx.media3.session.SessionCommand
 import androidx.media3.session.SessionResult
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
+import com.google.common.util.concurrent.SettableFuture
 import com.stellapp.disc.data.FavStore
 import androidx.media3.session.MediaSessionService
 import com.stellapp.disc.data.ListenKind
@@ -304,6 +305,40 @@ class PlaybackService : MediaSessionService() {
             }
             refreshButtons()
             return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
+        }
+
+        /**
+         * Songs asked for by name: "play Bohemian Rhapsody" from Stella, Google Assistant, a car or a watch
+         * arrives as an item with only a search query, and is looked up in the library here.
+         * Items that already point at a file (everything the app itself plays) pass straight through.
+         */
+        override fun onAddMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: MutableList<androidx.media3.common.MediaItem>,
+        ): ListenableFuture<MutableList<androidx.media3.common.MediaItem>> {
+            if (mediaItems.all { it.localConfiguration != null }) return Futures.immediateFuture(mediaItems)
+            val asked = mediaItems.firstOrNull { it.localConfiguration == null } ?: return Futures.immediateFuture(mediaItems)
+            val query = asked.requestMetadata.searchQuery
+                ?: asked.mediaMetadata.title?.toString()
+                ?: ""
+            val focus = asked.requestMetadata.extras?.getString("android.intent.extra.focus")
+            val result = SettableFuture.create<MutableList<androidx.media3.common.MediaItem>>()
+            scope.launch {
+                val hit = try {
+                    com.stellapp.disc.data.VoiceSearch.find(this@PlaybackService, query, focus)
+                } catch (e: Exception) {
+                    null
+                }
+                val items = hit?.items.orEmpty().take(500).map { it.toMediaItem() }
+                if (items.isEmpty()) {
+                    result.setException(UnsupportedOperationException("Nothing in your library matches \"$query\""))
+                } else {
+                    Rotation.stop(this@PlaybackService)
+                    result.set(items.toMutableList())
+                }
+            }
+            return result
         }
     }
 

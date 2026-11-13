@@ -26,7 +26,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        if (savedInstanceState == null) vm.handleShare(intent)
+        if (savedInstanceState == null) {
+            vm.handleShare(intent)
+            vm.handlePlayRequest(intent)
+        }
         setContent {
             val accent by vm.accentIndex.collectAsStateWithLifecycle()
             // Dark status/nav bar icons on Ink's paper, light ones in the cockpit.
@@ -50,6 +53,7 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         vm.handleShare(intent)
+        vm.handlePlayRequest(intent)
     }
 
     /** Leaving the app while a fullscreen video plays pops it into a floating window. */
