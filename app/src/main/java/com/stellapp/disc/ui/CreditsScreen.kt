@@ -55,6 +55,7 @@ private val CREDITS = listOf(
     Credit("Jetpack Compose", "User interface", "Apache-2.0", "https://developer.android.com/compose"),
     Credit("Kotlin Coroutines", "Background work", "Apache-2.0", "https://github.com/Kotlin/kotlinx.coroutines"),
     Credit("ZXing", "QR codes for Swap", "Apache-2.0", "https://github.com/journeyapps/zxing-android-embedded"),
+    Credit("Bangers", "Comic lettering for the Ink & Screentone theme", "SIL Open Font License 1.1", "https://github.com/googlefonts/bangers"),
     Credit("Jetpack Glance", "Home screen widget", "Apache-2.0", "https://developer.android.com/develop/ui/compose/glance"),
     Credit("LRCLIB", "Online lyrics (only when you ask)", "Free API", "https://lrclib.net"),
 )

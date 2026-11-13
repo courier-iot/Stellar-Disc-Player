@@ -29,6 +29,14 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) vm.handleShare(intent)
         setContent {
             val accent by vm.accentIndex.collectAsStateWithLifecycle()
+            // Dark status/nav bar icons on Ink's paper, light ones in the cockpit.
+            val paper = com.stellapp.disc.ui.theme.ThemeState.ink
+            androidx.compose.runtime.SideEffect {
+                androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = paper
+                    isAppearanceLightNavigationBars = paper
+                }
+            }
             DiscTheme(accentIndex = accent) {
                 // Battery Saver calms every animation in the app.
                 val powerSave = rememberPowerSaveMode()

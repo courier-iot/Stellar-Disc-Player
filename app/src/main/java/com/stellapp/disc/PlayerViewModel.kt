@@ -154,6 +154,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     val onboarded: StateFlow<Boolean> = settings.onboarded
     val btAutoplay: StateFlow<Boolean> = settings.btAutoplay
     val pureBlack: StateFlow<Boolean> = settings.pureBlack
+    val uiStyle: StateFlow<com.stellapp.disc.ui.theme.UiStyle> = settings.uiStyle
+    val inkAccent: StateFlow<Int> = settings.inkAccent
     val favourites: StateFlow<List<Long>> = FavStore.ids
 
     private val _wifiOnly = MutableStateFlow(UplinkManager.wifiOnly(app))
@@ -663,6 +665,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setBtAutoplay(on: Boolean) = settings.setBtAutoplay(on)
     fun setPureBlack(on: Boolean) = settings.setPureBlack(on)
+    fun setUiStyle(style: com.stellapp.disc.ui.theme.UiStyle) = settings.setUiStyle(style)
+    fun setInkAccent(index: Int) = settings.setInkAccent(index)
 
     private val _strictOptions = MutableStateFlow(UplinkManager.strictOptions(app))
     val strictOptions: StateFlow<Boolean> = _strictOptions.asStateFlow()
@@ -725,6 +729,31 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     fun exportBackup(uri: Uri) = transfer.exportBackup(uri)
     fun importBackup(uri: Uri) = transfer.importBackup(uri)
+
+    // ---------- move to a new phone ----------
+
+    /** Everything the old phone sends besides the files themselves. */
+    fun moveExtras(): com.stellapp.disc.swap.MoveExtras = com.stellapp.disc.swap.MoveExtras(
+        backup = { transfer.buildBackupText() },
+        playlists = PlaylistStore.playlists.value.map { it.name to it.songIds },
+        favIds = FavStore.ids.value.toSet(),
+        plays = com.stellapp.disc.data.PlayStats.stats.value.mapValues { it.value.count },
+    )
+
+    /** On the new phone, after the files arrive: rescan, then restore playlists and settings. */
+    fun restoreMovedBackup(text: String) {
+        transfer.importBackupText(text) {
+            withContext(Dispatchers.IO) {
+                rawSongs = try {
+                    MusicRepository.loadSongs(ctx, allVideos = hasVideoAccess())
+                } catch (e: Exception) {
+                    rawSongs
+                }
+            }
+            loaded = true
+            publish()
+        }
+    }
     fun exportM3u(playlistId: String, uri: Uri) = transfer.exportM3u(playlistId, uri)
     fun importM3u(uri: Uri, fileName: String?) = transfer.importM3u(uri, fileName)
 
@@ -746,6 +775,8 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun consumeSharedUrl() { _sharedUrl.value = null }
 
     fun loadUplinkPrefs(): UplinkPrefs = uplinkSettings.load()
+    fun saveUplinkSimple(simpleMode: Boolean, video: Boolean, quality: com.stellapp.disc.uplink.SimpleQuality) =
+        uplinkSettings.saveSimple(simpleMode, video, quality)
 
     fun startDownload(options: DownloadOptions, remember: Boolean = true) {
         if (remember) uplinkSettings.save(options)

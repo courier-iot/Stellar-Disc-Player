@@ -45,6 +45,8 @@ object SongMatcher {
             // 3. Same song, different file
             val rk = keys(r.title, r.artist)
             val hit = prepared.firstOrNull { (local, lk) -> similar(lk, rk) && durationOk(local.durationMs, r.durationMs) }?.first
+            // No fingerprint (a whole-library move): the same song at exactly the same size is the same file.
+            if (hit != null && r.hash == null && r.size > 0 && hit.size == r.size) return@map TrackMatch(MatchKind.HAVE, hit)
             if (hit != null) TrackMatch(MatchKind.PROBABLY, hit) else TrackMatch(MatchKind.NEW, null)
         }
     }

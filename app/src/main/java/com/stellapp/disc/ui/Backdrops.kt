@@ -76,6 +76,10 @@ fun PlayerBackdrop(
     anchor: DiscAnchor? = null,
     thumbnail: Boolean = false,
 ) {
+    if (com.stellapp.disc.ui.theme.ThemeState.ink && !thumbnail) {
+        InkPaper(modifier)
+        return
+    }
     if (kind == Backdrop.SYNTHWAVE) {
         Starfield(modifier, animate = animate, grid = true, speed = if (playing) 1.6f else 0.3f)
         return

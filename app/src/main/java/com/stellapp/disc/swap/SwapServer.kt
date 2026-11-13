@@ -32,10 +32,21 @@ import java.security.SecureRandom
  * A tiny web server that offers one playlist to phones on the same Wi-Fi (or hotspot).
  * Every request must carry the one-time token from the QR code.
  */
+/** What a "move to a new phone" share adds on top of a normal one. */
+class MoveExtras(
+    /** Builds the backup file (playlists, favourites, play counts, settings). */
+    val backup: () -> String,
+    val playlists: List<Pair<String, List<Long>>>,
+    val favIds: Set<Long>,
+    val plays: Map<Long, Int>,
+)
+
 class SwapServer(
     private val context: Context,
     private val name: String,
     private val tracks: List<Song>,
+    /** Non-null when the whole library is moving to a new phone. */
+    private val move: MoveExtras? = null,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var server: ServerSocket? = null
@@ -112,7 +123,9 @@ class SwapServer(
     private fun buildManifest(): RemoteManifest {
         val resolver = context.contentResolver
         val list = tracks.mapIndexed { i, s ->
-            val hashed = QuickHash.ofUri(context, s.uri)
+            // Fingerprinting thousands of files would keep the new phone waiting; a move matches
+            // by size and tags instead (see SongMatcher).
+            val hashed = if (move != null) null else QuickHash.ofUri(context, s.uri)
             val mime = try { resolver.getType(s.uri) } catch (e: Exception) { null }
             val ext = mime?.let { MimeTypeMap.getSingleton().getExtensionFromMimeType(it) }
                 ?: if (s.isVideo) "mp4" else "mp3"
@@ -127,9 +140,17 @@ class SwapServer(
                 ext = ext,
                 isVideo = s.isVideo,
                 link = LinkStore.get(s.id),
+                fav = move?.favIds?.contains(s.id) == true,
+                plays = move?.plays?.get(s.id) ?: 0,
             )
         }
-        return RemoteManifest(name, list)
+        if (move == null) return RemoteManifest(name, list)
+        val indexOf = tracks.withIndex().associate { (i, s) -> s.id to i }
+        val groups = move.playlists.mapNotNull { (n, ids) ->
+            val idx = ids.mapNotNull { indexOf[it] }
+            if (idx.isEmpty()) null else RemoteGroup(n, idx)
+        }
+        return RemoteManifest(name, list, kind = RemoteManifest.KIND_MOVE, groups = groups)
     }
 
     private suspend fun acceptLoop(socket: ServerSocket) {
@@ -184,6 +205,10 @@ class SwapServer(
 
                 when {
                     path == "/manifest" -> respond(out, 200, "application/octet-stream", SwapCrypto.seal(key, manifestJson))
+                    path == "/backup" && move != null -> {
+                        val text = try { move.backup() } catch (e: Exception) { "" }
+                        respond(out, 200, "application/octet-stream", SwapCrypto.seal(key, text.toByteArray(Charsets.UTF_8)))
+                    }
                     path.startsWith("/file/") -> {
                         val song = path.removePrefix("/file/").toIntOrNull()?.let { tracks.getOrNull(it) }
                         if (song == null) respond(out, 404, "text/plain", "No such track".toByteArray())

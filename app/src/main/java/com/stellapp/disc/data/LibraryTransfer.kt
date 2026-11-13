@@ -31,19 +31,24 @@ class LibraryTransfer(
 ) {
     private val playlists get() = PlaylistStore.playlists.value
 
+    /** The whole backup as text: playlists, per-song extras, settings. Call off the main thread. */
+    fun buildBackupText(): String {
+        val byId = allSongs().associateBy { it.id }
+        val prefs = settings.toJson().put("fade", PlaybackExtras.fadeSeconds.value)
+        prefs.put("library", buildExtras())
+        // Your own backdrop photo travels with the backup.
+        val photo = CustomBackdrop.file(ctx)
+        if (photo.exists() && photo.length() in 1L..6_000_000L) {
+            prefs.put("customBackdrop", Base64.encodeToString(photo.readBytes(), Base64.NO_WRAP))
+        }
+        return Backup.build(playlists, byId, LinkStore.all(), prefs)
+    }
+
     fun exportBackup(uri: Uri) {
         scope.launch {
             val ok = withContext(Dispatchers.IO) {
                 try {
-                    val byId = allSongs().associateBy { it.id }
-                    val prefs = settings.toJson().put("fade", PlaybackExtras.fadeSeconds.value)
-                    prefs.put("library", buildExtras())
-                    // Your own backdrop photo travels with the backup.
-                    val photo = CustomBackdrop.file(ctx)
-                    if (photo.exists() && photo.length() in 1L..6_000_000L) {
-                        prefs.put("customBackdrop", Base64.encodeToString(photo.readBytes(), Base64.NO_WRAP))
-                    }
-                    val text = Backup.build(playlists, byId, LinkStore.all(), prefs)
+                    val text = buildBackupText()
                     ctx.contentResolver.openOutputStream(uri, "wt")?.use { it.write(text.toByteArray()) } != null
                 } catch (e: Exception) {
                     false
@@ -55,9 +60,26 @@ class LibraryTransfer(
 
     fun importBackup(uri: Uri) {
         scope.launch {
+            val text = readText(uri)
+            if (text == null) post("That file isn't a Stellar Disc backup") else restoreText(text)
+        }
+    }
+
+    /**
+     * Restores a backup from its text. [before] runs first (a move rescans the library so the
+     * songs that just arrived can be matched).
+     */
+    fun importBackupText(text: String, before: suspend () -> Unit = {}) {
+        scope.launch {
+            before()
+            restoreText(text)
+        }
+    }
+
+    private suspend fun restoreText(text: String) {
+        run {
             try {
                 var extrasNote = ""
-                val text = readText(uri) ?: throw IllegalStateException()
                 val (lists, prefs) = Backup.parse(text)
                 var matched = 0
                 var total = 0

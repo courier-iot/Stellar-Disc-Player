@@ -2,7 +2,7 @@
 
 A cyberpunk / deep-space music player for Android. It plays the music files stored on your phone.
 
-## Features (v3.1.2)
+## Features (v3.2.0)
 
 - **Modern home:** a top bar with the "under the hood" toggle on the left, the logo in the middle, and search and settings on the right. Below that:
   - **Regular picks:** a big hero card plus a double row of picks, learned from what you finish, skip and play at each time of day. Tap the small tab next to the heading to choose what the hero shows: Top pick, Most played, Playlist, Rare listen, Forgotten gem, Fresh arrival or Random.
@@ -29,6 +29,8 @@ A cyberpunk / deep-space music player for Android. It plays the music files stor
 - **Undo** after removing something from the queue or a playlist, or deleting a playlist. Deleted files go to the phone's trash on Android 11+.
 - **Notification & lock screen:** ♥ favourite and shuffle buttons next to the usual controls.
 - **Resizable widget:** small (art and play), wide (the classic strip with ♥) and large (big art and full controls).
+- **Move to a new phone** (Settings → Library): the old phone shows a QR code; the new phone scans it, shows a storage bar (used · this move · free after, red when it won't fit, 1 GB kept spare), and lets you pick with quick picks (All · Music · Videos · None), Fit to space (music, videos or favourites first, then most played), or tick boxes grouped by album, artist or playlist. Files it already has are skipped; playlists, favourites, play counts and settings come across too. Encrypted and resumable, like Swap.
+- **Themes** (Settings → Look → Theme): the neon **Cyber** cockpit, or **Ink & Screentone**, a manga page with newsprint paper, square inked panels with hard shadows, halftone dots, speed lines and comic lettering (Bangers, OFL), in red, blue or pure-black ink.
 - **Pure black** (Settings → Look) for true-black backgrounds on OLED screens.
 - **A–Z rail** on the Songs list for fast scrolling (A–Z and Artist sorts).
 - **Gestures & tips** in Settings lists every swipe and shortcut. A launch screen with the disc and a themed (monochrome) icon for Android 13+.
@@ -47,7 +49,9 @@ A cyberpunk / deep-space music player for Android. It plays the music files stor
   - Works with YouTube, SoundCloud, Bandcamp, Vimeo and [1,000+ other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md).
   - Grab a whole playlist or album, or just the one item. Uplink works out which kind of link you pasted and picks for you.
   - **Wi-Fi only** option, so downloads wait instead of using mobile data.
-  - Audio formats: MP3, M4A, OPUS, FLAC, WAV or ORIGINAL (untouched), with a bitrate picker for MP3/M4A/OPUS.
+  - **Autopilot** (default): pick ♪ Music or ▶ Video, then ★ Best, ◆ Balanced or ▽ Data saver, with a rough file size for each. **Manual control** (toggle at the top) keeps every dial.
+  - Manual audio formats: MP3, M4A, OPUS or ORIGINAL (untouched), with a bitrate picker for MP3/M4A/OPUS.
+  - Failed downloads explain themselves in one plain sentence, with the raw yt-dlp text behind DETAILS.
   - Video formats: MP4 (H.264, plays anywhere) or MKV · BEST (highest-quality VP9/AV1 streams), with a max resolution from 480p to 4K.
   - Embeds title, artist and cover art.
   - **Add to:** always saved to your library (Music/Stellar Disc or Movies/Stellar Disc). Optionally adds the download to an existing playlist or a new one, and can queue it up when finished.
@@ -129,6 +133,12 @@ Keep `stellardisc.jks` backed up somewhere safe and **never** commit it. If you 
 Change `appVersion` near the top of `app/build.gradle.kts` (format `vLARGE.MEDIUM.SMALL`). The version code is calculated from it, so Android always sees the new build as newer.
 
 ## Changelog
+
+### v3.2.0
+(Also covers work delivered as v3.2.0 and v3.3.0 but never uploaded; this is the first release after v3.1.2.)
+**Added:** Move to a new phone over Wi-Fi with a storage bar, quick picks, Fit to space and grouped tick boxes, bringing playlists, favourites, play counts and settings. The Ink & Screentone theme (red, blue, pure-black inks; Bangers font, OFL). Uplink Autopilot (Music/Video × Best/Balanced/Data saver) with a Manual control toggle. Plain-language download errors with DETAILS. One engine status line plus an Engine room fold in Settings. A "VPN is on" hint for Swap.
+**Removed:** the FLAC and WAV formats; the playlist question for non-playlist links in Autopilot.
+**Changed:** the engine spool-up screen grows with its log and shrinks the turbine on short screens, so text is no longer cut off. Themed Uplink wording. Status bar icons go dark on the paper theme. Moves match files by size and tags instead of fingerprints so the new phone isn't kept waiting.
 
 ### v3.1.2
 **Added:** nothing

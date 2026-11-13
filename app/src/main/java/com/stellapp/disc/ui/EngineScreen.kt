@@ -14,6 +14,11 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -137,8 +142,24 @@ fun EngineGateScreen(gate: EngineGate, onDone: () -> Unit) {
             .clickable(interactionSource = remember { MutableInteractionSource() }, indication = null) {},
         contentAlignment = Alignment.Center,
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-            Canvas(Modifier.size(220.dp)) {
+      androidx.compose.foundation.layout.BoxWithConstraints(
+          Modifier
+              .fillMaxSize()
+              .statusBarsPadding()
+              .navigationBarsPadding(),
+          contentAlignment = Alignment.Center,
+      ) {
+        // Smaller turbine on short (landscape) screens so the log always fits underneath.
+        val turbine = minOf(220.dp, maxHeight * 0.38f)
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(vertical = 16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Canvas(Modifier.size(turbine)) {
                 val r = size.minDimension / 2f
                 drawCircle(Brush.radialGradient(listOf(glow.copy(alpha = 0.15f + 0.35f * h), Color.Transparent), center = center, radius = r), r)
                 drawCircle(glow.copy(alpha = 0.7f), r * 0.86f, style = Stroke(3.dp.toPx()))
@@ -174,15 +195,17 @@ fun EngineGateScreen(gate: EngineGate, onDone: () -> Unit) {
                     }
                 }
             }
-            Spacer(Modifier.height(28.dp))
+            Spacer(Modifier.height(if (turbine < 200.dp) 14.dp else 28.dp))
             Text(title, color = glow, fontFamily = Mono, fontWeight = FontWeight.Black, fontSize = 22.sp, letterSpacing = 4.sp)
             Text("UPLINK ENGINES", color = TextLo, fontFamily = Mono, fontSize = 11.sp, letterSpacing = 3.sp, modifier = Modifier.padding(top = 4.dp))
             Spacer(Modifier.height(20.dp))
-            Column(Modifier.fillMaxWidth().padding(horizontal = 40.dp).height(110.dp)) {
+            // Grows with the log instead of clipping wrapped lines (it used to be a fixed 110dp).
+            Column(Modifier.fillMaxWidth().padding(horizontal = 32.dp).heightIn(min = 110.dp)) {
                 lines.forEach {
-                    Text(it, color = TextHi, fontFamily = Mono, fontSize = 12.sp, textAlign = TextAlign.Start, modifier = Modifier.padding(vertical = 2.dp))
+                    Text(it, color = TextHi, fontFamily = Mono, fontSize = 12.sp, lineHeight = 16.sp, textAlign = TextAlign.Start, modifier = Modifier.padding(vertical = 2.dp))
                 }
             }
         }
+      }
     }
 }

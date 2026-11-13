@@ -130,7 +130,7 @@ fun SwapReceiveScreen(
                 Column(Modifier.weight(1f)) {
                     Text("SWAP", style = neonTitleStyle(22))
                     Text(
-                        session?.name?.let { "receiving · $it" } ?: "send or receive a playlist",
+                        session?.let { if (it.move) "moving · ${it.name}" else "receiving · ${it.name}" } ?: "send or receive a playlist",
                         color = TextLo,
                         fontFamily = Mono,
                         fontSize = 11.sp,
@@ -155,6 +155,21 @@ fun SwapReceiveScreen(
                 SwapPhase.ERROR -> ErrorState(s.message ?: "Something went wrong.") {
                     SwapReceiver.close()
                 }
+                SwapPhase.REVIEW -> if (s.move) {
+                    MoveReview(s, onGo = { SwapReceiver.receive(context, vm.loadUplinkPrefs()) })
+                } else Review(
+                    s = s,
+                    uplinkLabel = remember { vm.loadUplinkPrefs() }.let { p ->
+                        p.format.label + if (p.format.bitrate) " ${p.audioKbps}K" else if (p.format == DlFormat.MP4 || p.format == DlFormat.MKV) " ≤${p.maxHeight}p" else ""
+                    },
+                    onGo = { SwapReceiver.receive(context, vm.loadUplinkPrefs()) },
+                    onDone = leave,
+                    onOpenUplink = {
+                        SwapReceiver.close()
+                        onOpenUplink()
+                    },
+                    accent = primary,
+                )
                 else -> Review(
                     s = s,
                     uplinkLabel = remember { vm.loadUplinkPrefs() }.let { p ->
@@ -205,6 +220,13 @@ private fun Intro(
         Spacer(Modifier.height(12.dp))
         Text(
             "Ask your friend to open a playlist and tap the share icon. Nearby needs you both on the same Wi-Fi, or you can join their phone's hotspot. Link codes work anywhere.",
+            color = TextLo,
+            fontSize = 13.sp,
+        )
+
+        SectionLabel("MOVING PHONES?")
+        Text(
+            "On your old phone open Settings → Move to a new phone, then tap SCAN QR CODE above on this one. You choose what to bring and see if it fits before anything is sent.",
             color = TextLo,
             fontSize = 13.sp,
         )
@@ -476,7 +498,7 @@ private fun ItemRow(item: SwapItem, reviewing: Boolean, accent: Color, onToggle:
 }
 
 @Composable
-private fun BigButton(label: String, enabled: Boolean, accent: Color, filled: Boolean = true, onClick: () -> Unit) {
+internal fun BigButton(label: String, enabled: Boolean, accent: Color, filled: Boolean = true, onClick: () -> Unit) {
     val secondary = MaterialTheme.colorScheme.secondary
     Box(
         Modifier

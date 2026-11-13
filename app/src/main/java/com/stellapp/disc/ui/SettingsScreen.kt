@@ -42,6 +42,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -66,6 +67,9 @@ import com.stellapp.disc.uplink.UplinkManager
 import com.stellapp.disc.ui.theme.accentGradient
 import com.stellapp.disc.ui.theme.Accents
 import com.stellapp.disc.ui.theme.Mono
+import com.stellapp.disc.ui.theme.InkBlack
+import com.stellapp.disc.ui.theme.InkAccents
+import com.stellapp.disc.ui.theme.UiStyle
 import com.stellapp.disc.ui.theme.TextHi
 import com.stellapp.disc.ui.theme.TextLo
 import kotlinx.coroutines.launch
@@ -85,6 +89,8 @@ fun SettingsScreen(
     onOpenYtSignIn: () -> Unit,
     onOpenStats: () -> Unit = {},
     onOpenTips: () -> Unit = {},
+    onOpenMoveSend: () -> Unit = {},
+    onOpenMoveReceive: () -> Unit = {},
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -104,6 +110,8 @@ fun SettingsScreen(
     val customVersion by CustomBackdrop.version.collectAsStateWithLifecycle()
     val btAutoplay by vm.btAutoplay.collectAsStateWithLifecycle()
     val pureBlack by vm.pureBlack.collectAsStateWithLifecycle()
+    val uiStyle by vm.uiStyle.collectAsStateWithLifecycle()
+    val inkAccent by vm.inkAccent.collectAsStateWithLifecycle()
     val wifiOnly by vm.wifiOnly.collectAsStateWithLifecycle()
     val strictOptions by vm.strictOptions.collectAsStateWithLifecycle()
     val solverFromGithub by vm.solverFromGithub.collectAsStateWithLifecycle()
@@ -173,6 +181,45 @@ fun SettingsScreen(
                     .padding(horizontal = 16.dp)
             ) {
                 Section("LOOK") {
+                    Text("THEME", color = TextLo, fontFamily = Mono, fontSize = 11.sp, modifier = Modifier.padding(bottom = 8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        UiStyle.entries.forEach { st -> NeonChip(st.label, uiStyle == st) { vm.setUiStyle(st) } }
+                    }
+                    Text(
+                        if (uiStyle == UiStyle.INK) "A manga page: newsprint, black ink, screentone and comic lettering."
+                        else "The neon cockpit: deep space, glowing edges and animated backdrops.",
+                        color = TextLo,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(top = 6.dp, bottom = 14.dp),
+                    )
+                    if (uiStyle == UiStyle.INK) {
+                        Text("INK", color = TextLo, fontFamily = Mono, fontSize = 11.sp, modifier = Modifier.padding(bottom = 8.dp))
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            InkAccents.forEachIndexed { i, a ->
+                                Column(
+                                    Modifier
+                                        .clickable { vm.setInkAccent(i) }
+                                        .padding(4.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                ) {
+                                    Box(
+                                        Modifier
+                                            .size(36.dp)
+                                            .background(a.primary)
+                                            .border(if (i == inkAccent) 3.dp else 1.5.dp, InkBlack)
+                                    )
+                                    Text(a.name.uppercase(), color = if (i == inkAccent) InkBlack else TextLo, fontFamily = Mono, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                        Text(
+                            "Ink pages use their own paper backdrop. Switch back to Cyber for the scenes and photo backdrops.",
+                            color = TextLo,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 10.dp),
+                        )
+                    }
+                    if (uiStyle == UiStyle.CYBER) {
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Accents.forEachIndexed { i, a ->
                             Column(
@@ -232,6 +279,7 @@ fun SettingsScreen(
                     )
                     ToggleRow("Pure black", "True-black backgrounds. Saves battery on OLED screens", pureBlack) { vm.setPureBlack(it) }
                     ToggleRow("Animated starfield", "Turn off to save battery", animate) { vm.setAnimateBackground(it) }
+                    }
                     ToggleRow("Modern home", "Off shows the \"under the hood\" library view", modernHome) { vm.setModernHome(it) }
                 }
 
@@ -280,33 +328,23 @@ fun SettingsScreen(
                 }
 
                 Section("UPLINK ENGINE") {
-                    ToggleRow("Wi-Fi only", "Downloads wait until you're on Wi-Fi, so they don't use mobile data", wifiOnly) { vm.setWifiOnly(it) }
-                    ToggleRow(
-                        "Strict yt-dlp options",
-                        "Only well-known safe options are used from your always-on and advanced options. Off: only options that run programs are blocked.",
-                        strictOptions,
-                    ) { vm.setStrictOptions(it) }
-                    ToggleRow(
-                        "Solver scripts from GitHub (fallback)",
-                        if (solverMissing) "⚠ yt-dlp reported its YouTube solver missing. Turning this on lets it fetch the scripts from yt-dlp's GitHub."
-                        else "Off: yt-dlp uses the solver built into its official release, so nothing is downloaded at run time.",
-                        solverFromGithub,
-                    ) { vm.setSolverFromGithub(it) }
-                    if (UplinkManager.initError != null) {
-                        Text("⚠ " + (UplinkManager.initError ?: ""), color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                    // One status line instead of a stack of warnings.
+                    val engineVersion by UplinkManager.version.collectAsStateWithLifecycle()
+                    val fault = UplinkManager.initError
+                    val (statusOk, status) = when {
+                        fault != null -> false to "⚠ Engine fault: $fault"
+                        !vm.hasJsRuntime -> false to "⚠ Engine online, but YouTube may struggle: this build has no JavaScript runtime."
+                        solverMissing && !solverFromGithub -> false to "⚠ YouTube's locks changed. Open Engine room below and turn on Solver scripts from GitHub."
+                        else -> true to "✓ Engine ready" + (engineVersion?.let { " · yt-dlp $it" } ?: "") + " · YouTube unlocked"
                     }
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        if (vm.hasJsRuntime) "✓ JavaScript runtime: QuickJS built in. yt-dlp can solve YouTube's checks."
-                        else "⚠ No JavaScript runtime in this build, so YouTube may fail or offer fewer formats.",
-                        color = if (vm.hasJsRuntime) primary else DangerRed,
-                        fontSize = 13.sp,
-                    )
-                    Spacer(Modifier.height(14.dp))
+                    Text(status, color = if (statusOk) primary else DangerRed, fontSize = 13.sp)
+                    Spacer(Modifier.height(10.dp))
+                    ToggleRow("Wi-Fi only", "Downloads wait until you're on Wi-Fi, so they don't use mobile data", wifiOnly) { vm.setWifiOnly(it) }
+                    Spacer(Modifier.height(10.dp))
                     Text("YouTube sign-in", color = TextHi, fontSize = 14.sp)
                     Text(
-                        if (ytSignedIn) "✓ Signed in. Uplink and streaming use your account for YouTube."
-                        else "Use this if YouTube says \"sign in to confirm you're not a bot\".",
+                        if (ytSignedIn) "✓ Signed in. Uplink and live feeds use your account for YouTube."
+                        else "Use this if a download says the site thinks we're a bot.",
                         color = if (ytSignedIn) primary else TextLo,
                         fontSize = 12.sp,
                     )
@@ -317,24 +355,48 @@ fun SettingsScreen(
                         if (ytSignedIn) NeonChip("SIGN OUT", false) { vm.clearYtCookies() }
                     }
                     Text(
-                        "Only your YouTube cookies are kept, privately inside the app. They work like a password, so consider a spare account: Google can flag accounts that download a lot. Import cookies.txt is the backup if Google won't allow sign-in inside apps.",
+                        "Your cookies stay encrypted inside the app, but they work like a password, so a spare account is safest: Google can flag accounts that download a lot.",
                         color = TextLo,
                         fontSize = 11.sp,
                         modifier = Modifier.padding(top = 8.dp),
                     )
-                    Spacer(Modifier.height(12.dp))
-                    ToggleRow(
-                        "Nightly yt-dlp updates",
-                        "Gets fixes for YouTube days earlier. Applies next time you tap Update yt-dlp in Credits & Support.",
-                        nightly,
-                    ) { vm.setNightly(it) }
-                    Spacer(Modifier.height(8.dp))
-                    Text("Always-on yt-dlp options", color = TextHi, fontSize = 14.sp)
-                    Text("Added to every download and stream, e.g. --embed-chapters", color = TextLo, fontSize = 12.sp)
-                    Spacer(Modifier.height(6.dp))
-                    NeonTextField(globalOpts, { globalOpts = it }, placeholder = "--option value …", singleLine = false)
-                    Spacer(Modifier.height(6.dp))
-                    NeonChip("SAVE OPTIONS", false) { vm.setYtdlpGlobalOptions(globalOpts) }
+
+                    var engineRoom by rememberSaveable { mutableStateOf(false) }
+                    Text(
+                        (if (engineRoom) "▾" else "▸") + " ENGINE ROOM · FOR TINKERERS",
+                        color = TextLo,
+                        fontFamily = Mono,
+                        fontSize = 12.sp,
+                        letterSpacing = 2.sp,
+                        modifier = Modifier
+                            .padding(top = 16.dp)
+                            .clickable { engineRoom = !engineRoom },
+                    )
+                    if (engineRoom) {
+                        Spacer(Modifier.height(6.dp))
+                        ToggleRow(
+                            "Nightly yt-dlp updates",
+                            "Gets fixes for YouTube days earlier. Applies next time you tap Update yt-dlp in Credits & Support.",
+                            nightly,
+                        ) { vm.setNightly(it) }
+                        ToggleRow(
+                            "Strict yt-dlp options",
+                            "Only well-known safe options are used from your always-on and raw commands. Off: only options that run programs are blocked.",
+                            strictOptions,
+                        ) { vm.setStrictOptions(it) }
+                        ToggleRow(
+                            "Solver scripts from GitHub",
+                            "A fallback for when YouTube changes its locks. Off: the solver built into yt-dlp is used, and nothing extra is downloaded.",
+                            solverFromGithub,
+                        ) { vm.setSolverFromGithub(it) }
+                        Spacer(Modifier.height(8.dp))
+                        Text("Always-on yt-dlp options", color = TextHi, fontSize = 14.sp)
+                        Text("Added to every download and live feed, e.g. --embed-chapters", color = TextLo, fontSize = 12.sp)
+                        Spacer(Modifier.height(6.dp))
+                        NeonTextField(globalOpts, { globalOpts = it }, placeholder = "--option value …", singleLine = false)
+                        Spacer(Modifier.height(6.dp))
+                        NeonChip("SAVE OPTIONS", false) { vm.setYtdlpGlobalOptions(globalOpts) }
+                    }
                 }
 
                 Section("LYRICS") {
@@ -348,6 +410,8 @@ fun SettingsScreen(
                 Section("LIBRARY") {
                     LinkRow("Listening stats", "Your top songs and artists, and hours listened", onOpenStats)
                     LinkRow("Rescan library", "Pick up new files right away") { vm.loadLibrary(force = true) }
+                    LinkRow("Move to a new phone", "Send your music, videos, playlists and settings over Wi-Fi", onOpenMoveSend)
+                    LinkRow("Receive from your old phone", "Scan the code your old phone shows", onOpenMoveReceive)
                     if (!vm.hasVideoAccess()) {
                         LinkRow("Show all phone videos", "Allow video access for the Videos tab") {
                             videoPermission.launch(

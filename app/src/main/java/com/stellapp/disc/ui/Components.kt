@@ -74,21 +74,52 @@ import com.stellapp.disc.ui.theme.PanelSolid
 import com.stellapp.disc.ui.theme.TextHi
 import com.stellapp.disc.ui.theme.TextLo
 import com.stellapp.disc.ui.theme.Void
+import com.stellapp.disc.ui.theme.Bangers
+import com.stellapp.disc.ui.theme.InkBlack
+import com.stellapp.disc.ui.theme.ThemeState
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.graphics.RectangleShape
 
-val NeonCut = CutCornerShape(topStart = 14.dp, bottomEnd = 14.dp)
-val SmallCut = CutCornerShape(topStart = 8.dp, bottomEnd = 8.dp)
+private val CyberCut = CutCornerShape(topStart = 14.dp, bottomEnd = 14.dp)
+private val CyberSmallCut = CutCornerShape(topStart = 8.dp, bottomEnd = 8.dp)
 
-/** Dark glass panel with a neon edge and a coloured glow (glow shows on Android 9+). */
+/** Cut-corner panels in the cockpit, square comic panels on the page. */
+val NeonCut: Shape get() = if (ThemeState.ink) RectangleShape else CyberCut
+val SmallCut: Shape get() = if (ThemeState.ink) RectangleShape else CyberSmallCut
+
+/**
+ * Dark glass panel with a neon edge and a coloured glow (glow shows on Android 9+).
+ * In Ink it becomes a comic panel: white, a thick black border, and a hard ink shadow
+ * wherever the cockpit would glow.
+ */
 fun Modifier.neonPanel(
     color: Color,
     shape: Shape = NeonCut,
     glow: Dp = 10.dp,
     fill: Color = Panel,
-): Modifier = this
-    .shadow(glow, shape, ambientColor = color, spotColor = color)
-    .clip(shape)
-    .background(fill)
-    .border(1.dp, Brush.linearGradient(listOf(color, color.copy(alpha = 0.2f))), shape)
+): Modifier {
+    if (ThemeState.ink) {
+        val paperFill = when (fill) {
+            Color.Transparent -> Color.Transparent
+            Color.Black -> Color.Black
+            else -> Color.White
+        }
+        return this
+            .then(
+                if (glow > 0.dp) Modifier.drawBehind {
+                    val o = 4.dp.toPx()
+                    drawRect(InkBlack, topLeft = Offset(o, o), size = size)
+                } else Modifier
+            )
+            .background(paperFill, RectangleShape)
+            .border(2.5.dp, InkBlack, RectangleShape)
+    }
+    return this
+        .shadow(glow, shape, ambientColor = color, spotColor = color)
+        .clip(shape)
+        .background(fill)
+        .border(1.dp, Brush.linearGradient(listOf(color, color.copy(alpha = 0.2f))), shape)
+}
 
 fun formatTime(ms: Long): String {
     val total = (ms / 1000).coerceAtLeast(0)
@@ -123,6 +154,28 @@ fun PlanetPlaceholder(seed: Long, modifier: Modifier = Modifier) {
     val mix = remember(seed) { (((seed * 2654435761L) ushr 8) and 0xFF).toInt() / 255f }
     val tilt = remember(seed) { -35f + 50f * mix }
     val body = lerp(primary, secondary, mix)
+    if (ThemeState.ink) {
+        // An inked record on screentone instead of a planet.
+        Canvas(modifier.background(Color.White)) {
+            val step = 6.dp.toPx()
+            var y = 0f
+            while (y <= size.height) {
+                var x = if (((y / step).toInt() % 2) == 0) 0f else step / 2f
+                while (x <= size.width) {
+                    drawCircle(InkBlack.copy(alpha = 0.5f), step * 0.18f, Offset(x, y))
+                    x += step
+                }
+                y += step
+            }
+            val r = size.minDimension * 0.38f
+            drawCircle(Color.White, r, center)
+            drawCircle(InkBlack, r, center, style = androidx.compose.ui.graphics.drawscope.Stroke(size.minDimension * 0.035f))
+            drawCircle(InkBlack.copy(alpha = 0.6f), r * 0.68f, center, style = androidx.compose.ui.graphics.drawscope.Stroke(size.minDimension * 0.015f))
+            drawCircle(primary, r * (0.26f + 0.08f * mix), center)
+            drawCircle(InkBlack, r * 0.06f, center)
+        }
+        return
+    }
     Canvas(modifier.background(Brush.linearGradient(listOf(Color(0xFF1A1238), Void)))) {
         // A few stars, placed per album so every cover is a little different.
         for (i in 0 until 14) {
@@ -169,6 +222,28 @@ fun EqualizerBars(playing: Boolean, color: Color, modifier: Modifier = Modifier)
 @Composable
 fun NeonChip(label: String, selected: Boolean, onClick: () -> Unit) {
     val primary = MaterialTheme.colorScheme.primary
+    if (ThemeState.ink) {
+        Text(
+            text = label,
+            modifier = Modifier
+                .background(if (selected) primary else Color.White)
+                .border(2.dp, InkBlack)
+                .clickable(role = Role.Button, onClick = onClick)
+                .semantics {
+                    if (selected) {
+                        stateDescription = "On"
+                    }
+                }
+                .padding(horizontal = 12.dp, vertical = 7.dp),
+            color = if (selected) Color.White else InkBlack,
+            fontFamily = Bangers,
+            fontSize = 15.sp,
+            letterSpacing = 1.sp,
+            maxLines = 1,
+            softWrap = false,
+        )
+        return
+    }
     Text(
         text = label,
         modifier = Modifier

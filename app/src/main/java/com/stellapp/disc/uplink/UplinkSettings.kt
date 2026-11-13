@@ -15,7 +15,19 @@ class UplinkSettings(private val prefs: SharedPreferences) {
         subtitles = prefs.getBoolean(KEY_DL_SUBS, true),
         subLangs = prefs.getString(KEY_DL_SUBLANGS, "en.*") ?: "en.*",
         skipExisting = prefs.getBoolean(KEY_DL_SKIP, true),
+        simpleMode = prefs.getBoolean(KEY_SIMPLE, true),
+        simpleVideo = prefs.getBoolean(KEY_SIMPLE_VIDEO, false),
+        simpleQuality = runCatching { SimpleQuality.valueOf(prefs.getString(KEY_SIMPLE_Q, null) ?: "BEST") }.getOrDefault(SimpleQuality.BEST),
     )
+
+    /** Remembers the Autopilot / Manual choices. */
+    fun saveSimple(simpleMode: Boolean, video: Boolean, quality: SimpleQuality) {
+        prefs.edit()
+            .putBoolean(KEY_SIMPLE, simpleMode)
+            .putBoolean(KEY_SIMPLE_VIDEO, video)
+            .putString(KEY_SIMPLE_Q, quality.name)
+            .apply()
+    }
 
     fun save(options: DownloadOptions) {
         prefs.edit()
@@ -41,5 +53,8 @@ class UplinkSettings(private val prefs: SharedPreferences) {
         const val KEY_DL_SUBS = "dl_subs"
         const val KEY_DL_SUBLANGS = "dl_sublangs"
         const val KEY_DL_SKIP = "dl_skip_existing"
+        const val KEY_SIMPLE = "dl_simple_mode"
+        const val KEY_SIMPLE_VIDEO = "dl_simple_video"
+        const val KEY_SIMPLE_Q = "dl_simple_quality"
     }
 }

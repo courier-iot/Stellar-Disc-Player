@@ -73,7 +73,10 @@ import com.stellapp.disc.uplink.LinkKind
 import com.stellapp.disc.uplink.DownloadJob
 import com.stellapp.disc.uplink.DownloadOptions
 import com.stellapp.disc.uplink.JobStatus
+import com.stellapp.disc.uplink.PlainErrors
 import com.stellapp.disc.uplink.PlaylistTarget
+import com.stellapp.disc.uplink.SimpleQuality
+import com.stellapp.disc.uplink.simplePreset
 import com.stellapp.disc.uplink.UplinkManager
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -125,6 +128,12 @@ fun UplinkScreen(
     var subs by rememberSaveable { mutableStateOf(saved.subtitles) }
     var subLangs by rememberSaveable { mutableStateOf(saved.subLangs) }
     var skipExisting by rememberSaveable { mutableStateOf(saved.skipExisting) }
+    var simple by rememberSaveable { mutableStateOf(saved.simpleMode) }
+    var simpleVideo by rememberSaveable { mutableStateOf(saved.simpleVideo) }
+    var quality by rememberSaveable { mutableStateOf(saved.simpleQuality) }
+    val preset = simplePreset(simpleVideo, quality)
+    // What actually gets used: Autopilot's preset, or the manual dials.
+    val useFormat = if (simple) preset.format else format
     var streaming by remember { mutableStateOf(false) }
     var streamError by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -155,7 +164,23 @@ fun UplinkScreen(
             )
             else -> PlaylistTarget.Existing(t)
         }
-        vm.startDownload(
+        vm.saveUplinkSimple(simple, simpleVideo, quality)
+        val options = if (simple) {
+            DownloadOptions(
+                url = url.trim(),
+                format = preset.format,
+                audioKbps = preset.kbps,
+                maxHeight = preset.maxHeight,
+                wholePlaylist = whole,
+                embed = true,
+                target = target,
+                queueWhenDone = queue,
+                extraArgs = "",
+                subtitles = subs,
+                subLangs = subLangs,
+                skipExisting = true,
+            )
+        } else {
             DownloadOptions(
                 url = url.trim(),
                 format = format,
@@ -170,7 +195,9 @@ fun UplinkScreen(
                 subLangs = subLangs,
                 skipExisting = skipExisting,
             )
-        )
+        }
+        // Autopilot doesn't overwrite the Manual control dials.
+        vm.startDownload(options, remember = !simple)
         url = ""
     }
 
@@ -180,7 +207,7 @@ fun UplinkScreen(
         streamError = null
         val link = url.trim()
         scope.launch {
-            val result = UplinkManager.resolveStream(context, link, video = format.isVideo)
+            val result = UplinkManager.resolveStream(context, link, video = useFormat.isVideo)
             streaming = false
             result.onSuccess { info ->
                 vm.playStream(info)
@@ -232,6 +259,20 @@ fun UplinkScreen(
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp)
             ) {
+                // Autopilot vs Manual control.
+                Spacer(Modifier.height(4.dp))
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    NeonChip("◉ AUTOPILOT", simple) { simple = true }
+                    NeonChip("⚙ MANUAL CONTROL", !simple) { simple = false }
+                }
+                Text(
+                    if (simple) "Pick what you want and how good. Uplink handles the rest."
+                    else "Every dial and switch: formats, bitrates, subtitles and raw yt-dlp commands.",
+                    color = TextLo,
+                    fontSize = 12.sp,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+
                 SectionLabel("SIGNAL SOURCE")
                 NeonTextField(
                     value = url,
@@ -273,7 +314,7 @@ fun UplinkScreen(
                     }
                 }
                 Text(
-                    "Works with YouTube, SoundCloud, Bandcamp, Vimeo and 1,000+ other sites. See the full list ›",
+                    "Locks on to YouTube, SoundCloud, Bandcamp, Vimeo and 1,000+ other stations. Full list ›",
                     color = TextLo,
                     fontSize = 12.sp,
                     modifier = Modifier
@@ -281,55 +322,72 @@ fun UplinkScreen(
                         .clickable { openUrl(context, AppInfo.SUPPORTED_SITES_URL) },
                 )
 
-                SectionLabel("IF IT'S A PLAYLIST OR ALBUM")
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    NeonChip("GRAB EVERYTHING", whole) { whole = true }
-                    NeonChip("JUST THIS ONE", !whole) { whole = false }
-                }
-                val detected = when (linkKind) {
-                    LinkKind.COLLECTION -> "Detected a playlist or album: grabbing everything."
-                    LinkKind.SINGLE -> "Detected a single track."
-                    LinkKind.SINGLE_IN_LIST -> "This track is part of a playlist. Just this one is picked; tap GRAB EVERYTHING for the whole list."
-                    LinkKind.UNKNOWN -> null
-                }
-                if (detected != null) {
-                    Text(detected, color = TextLo, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
-                }
-
-                SectionLabel("SAVE AS · AUDIO")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DlFormat.entries.filter { !it.isVideo }.forEach { f -> NeonChip(f.label, format == f) { format = f } }
-                }
-                SectionLabel("SAVE AS · VIDEO")
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    DlFormat.entries.filter { it.isVideo }.forEach { f -> NeonChip(f.label, format == f) { format = f } }
-                }
-                Text(format.hint, color = secondary, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
-
-                if (format.bitrate) {
-                    SectionLabel("BITRATE")
-                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(320, 256, 192, 128).forEach { k -> NeonChip("${k}K", kbps == k) { kbps = k } }
+                // Only ask about playlists when the link actually is one.
+                val showConvoy = !simple || linkKind == LinkKind.COLLECTION || linkKind == LinkKind.SINGLE_IN_LIST
+                if (showConvoy) {
+                    SectionLabel("CONVOY DETECTED")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        NeonChip("THE WHOLE PLAYLIST", whole) { whole = true }
+                        NeonChip("JUST THIS ONE", !whole) { whole = false }
+                    }
+                    val detected = when (linkKind) {
+                        LinkKind.COLLECTION -> "That's a playlist or album. Beaming down every track."
+                        LinkKind.SINGLE -> "That's a single track."
+                        LinkKind.SINGLE_IN_LIST -> "This track flies with a playlist. Just this one is picked; tap THE WHOLE PLAYLIST for all of it."
+                        LinkKind.UNKNOWN -> null
+                    }
+                    if (detected != null) {
+                        Text(detected, color = TextLo, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
                     }
                 }
-                if (format.isVideo) {
-                    SectionLabel("MAX RESOLUTION")
+
+                if (simple) {
+                    SectionLabel("PAYLOAD")
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        NeonChip("♪ MUSIC", !simpleVideo) { simpleVideo = false }
+                        NeonChip("▶ VIDEO", simpleVideo) { simpleVideo = true }
+                    }
+                    SectionLabel("SIGNAL STRENGTH")
                     FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf(2160 to "4K", 1440 to "1440P", 1080 to "1080P", 720 to "720P", 480 to "480P", 0 to "ANY").forEach { (h, label) ->
-                            NeonChip(label, height == h) { height = h }
+                        SimpleQuality.entries.forEach { q -> NeonChip(q.label, quality == q) { quality = q } }
+                    }
+                    Text(preset.blurb, color = secondary, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+                } else {
+                    SectionLabel("AUDIO FORMAT")
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DlFormat.entries.filter { !it.isVideo }.forEach { f -> NeonChip(f.label, format == f) { format = f } }
+                    }
+                    SectionLabel("VIDEO FORMAT")
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        DlFormat.entries.filter { it.isVideo }.forEach { f -> NeonChip(f.label, format == f) { format = f } }
+                    }
+                    Text(format.hint, color = secondary, fontSize = 12.sp, modifier = Modifier.padding(top = 8.dp))
+
+                    if (format.bitrate) {
+                        SectionLabel("BITRATE")
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(320, 256, 192, 128).forEach { k -> NeonChip("${k}K", kbps == k) { kbps = k } }
+                        }
+                    }
+                    if (format.isVideo) {
+                        SectionLabel("MAX RESOLUTION")
+                        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            listOf(2160 to "4K", 1440 to "1440P", 1080 to "1080P", 720 to "720P", 480 to "480P", 0 to "ANY").forEach { (h, label) ->
+                                NeonChip(label, height == h) { height = h }
+                            }
                         }
                     }
                 }
 
-                if (format.isVideo) {
+                if (useFormat.isVideo) {
                     Spacer(Modifier.height(6.dp))
                     ToggleRow(
-                        title = "Embed subtitles",
-                        subtitle = "Uses the site's subtitles, or auto-captions if that's all there is",
+                        title = "Subtitles",
+                        subtitle = "Adds the site's subtitles, or auto-captions if that's all there is",
                         checked = subs,
                         onChange = { subs = it },
                     )
-                    if (subs) {
+                    if (subs && !simple) {
                         NeonTextField(subLangs, { subLangs = it }, placeholder = "Languages, e.g. en.*,es")
                         Text(
                             "Comma-separated language codes. en.* means any English.",
@@ -339,17 +397,19 @@ fun UplinkScreen(
                         )
                     }
                 }
-                Spacer(Modifier.height(10.dp))
-                ToggleRow(
-                    title = "Embed cover art & tags",
-                    subtitle = if (format == DlFormat.WAV) "WAV can't hold tags" else "Title, artist and artwork go into the file",
-                    checked = embed,
-                    onChange = { embed = it },
-                )
+                if (!simple) {
+                    Spacer(Modifier.height(10.dp))
+                    ToggleRow(
+                        title = "Cover art & tags",
+                        subtitle = "Title, artist and artwork go into the file",
+                        checked = embed,
+                        onChange = { embed = it },
+                    )
+                }
 
-                SectionLabel("ADD TO")
+                SectionLabel("DOCK IT IN")
                 Text(
-                    "✓ LIBRARY  ·  ${if (format.isVideo) "Movies" else "Music"}/${AppInfo.FOLDER}",
+                    "✓ LIBRARY  ·  ${if (useFormat.isVideo) "Movies" else "Music"}/${AppInfo.FOLDER}",
                     color = primary,
                     fontFamily = Mono,
                     fontSize = 12.sp,
@@ -367,38 +427,42 @@ fun UplinkScreen(
                     NeonTextField(newName, { newName = it }, placeholder = "Playlist name (optional)")
                 }
                 Spacer(Modifier.height(6.dp))
+                if (!simple) {
+                    ToggleRow(
+                        title = "Skip known signals",
+                        subtitle = "Doesn't re-download things you got before, and drops new copies of songs already in your library",
+                        checked = skipExisting,
+                        onChange = { skipExisting = it },
+                    )
+                }
                 ToggleRow(
-                    title = "Skip what I already have",
-                    subtitle = "Doesn't re-download things you got before, and removes new copies of songs already in your library",
-                    checked = skipExisting,
-                    onChange = { skipExisting = it },
-                )
-                ToggleRow(
-                    title = "Queue it up when done",
+                    title = "Play on arrival",
                     subtitle = "Adds the new tracks to what's playing",
                     checked = queue,
                     onChange = { queue = it },
                 )
 
-                Text(
-                    (if (showAdvanced) "▾" else "▸") + " ADVANCED",
-                    color = TextLo,
-                    fontFamily = Mono,
-                    fontSize = 12.sp,
-                    letterSpacing = 2.sp,
-                    modifier = Modifier
-                        .padding(top = 14.dp)
-                        .clickable { showAdvanced = !showAdvanced },
-                )
-                if (showAdvanced) {
-                    Spacer(Modifier.height(8.dp))
-                    NeonTextField(extra, { extra = it }, placeholder = "extra yt-dlp options", singleLine = false)
+                if (!simple) {
                     Text(
-                        "Passed straight to yt-dlp, for example --embed-chapters or --sponsorblock-remove music_offtopic.",
+                        (if (showAdvanced) "▾" else "▸") + " RAW yt-dlp COMMANDS",
                         color = TextLo,
+                        fontFamily = Mono,
                         fontSize = 12.sp,
-                        modifier = Modifier.padding(top = 6.dp),
+                        letterSpacing = 2.sp,
+                        modifier = Modifier
+                            .padding(top = 14.dp)
+                            .clickable { showAdvanced = !showAdvanced },
                     )
+                    if (showAdvanced) {
+                        Spacer(Modifier.height(8.dp))
+                        NeonTextField(extra, { extra = it }, placeholder = "extra yt-dlp options", singleLine = false)
+                        Text(
+                            "Passed straight to yt-dlp, for example --embed-chapters or --sponsorblock-remove music_offtopic.",
+                            color = TextLo,
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 6.dp),
+                        )
+                    }
                 }
 
                 Spacer(Modifier.height(22.dp))
@@ -415,7 +479,7 @@ fun UplinkScreen(
                             else Brush.horizontalGradient(listOf(Color.Transparent, Color.Transparent))
                         )
                         .clickable(enabled = urlOk) {
-                            val needsVideoPerm = format.isVideo && Build.VERSION.SDK_INT >= 33 &&
+                            val needsVideoPerm = useFormat.isVideo && Build.VERSION.SDK_INT >= 33 &&
                                 ContextCompat.checkSelfPermission(context, Manifest.permission.READ_MEDIA_VIDEO) != PackageManager.PERMISSION_GRANTED
                             if (needsVideoPerm) videoPermission.launch(Manifest.permission.READ_MEDIA_VIDEO) else start()
                         },
@@ -439,23 +503,20 @@ fun UplinkScreen(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        if (streaming) "TUNING IN…" else if (format.isVideo) "▷ STREAM VIDEO NOW" else "▷ STREAM AUDIO NOW",
+                        if (streaming) "TUNING IN…" else "▷ LIVE FEED · PLAY WITHOUT SAVING",
                         color = if (urlOk) secondary else TextLo,
                         fontFamily = Mono,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 3.sp,
                     )
                 }
+                streamError?.let {
+                    Text(PlainErrors.explain(it) ?: it, color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))
+                }
                 Text(
-                    streamError ?: "Streaming plays right away without saving. Quality may be lower than a download (YouTube streams are often 360p).",
-                    color = if (streamError != null) DangerRed else TextLo,
-                    fontSize = 11.sp,
-                    modifier = Modifier.padding(top = 6.dp),
-                )
-                Text(
-                    "Only download what you have the rights to. Details in Credits & Support ›",
+                    "Live feeds may be lower quality than a download. Only beam down what you have the rights to · Credits ›",
                     color = TextLo,
-                    fontSize = 12.sp,
+                    fontSize = 11.sp,
                     modifier = Modifier
                         .padding(top = 10.dp)
                         .clickable(onClick = onOpenCredits),
@@ -503,14 +564,14 @@ private fun JobCard(job: DownloadJob) {
     }
     val pct = (job.overallProgress * 100).toInt()
     val statusText = when (job.status) {
-        JobStatus.QUEUED -> "QUEUED"
-        JobStatus.PREPARING -> "BOOTING"
+        JobStatus.QUEUED -> "IN ORBIT · QUEUED"
+        JobStatus.PREPARING -> "LOCKING ON"
         JobStatus.DOWNLOADING -> if (job.itemCount > 1) "RECEIVING ${job.item}/${job.itemCount}" else "RECEIVING $pct%"
         JobStatus.PROCESSING -> if (job.itemCount > 1) "PROCESSING ${job.item}/${job.itemCount}" else "PROCESSING"
         JobStatus.SAVING -> "DOCKING"
-        JobStatus.DONE -> "COMPLETE"
-        JobStatus.FAILED -> "FAILED"
-        JobStatus.CANCELLED -> "CANCELLED"
+        JobStatus.DONE -> "DOCKED ✓"
+        JobStatus.FAILED -> "SIGNAL LOST"
+        JobStatus.CANCELLED -> "ABORTED"
     }
 
     Column(
@@ -560,9 +621,28 @@ private fun JobCard(job: DownloadJob) {
                 )
             }
         }
-        job.message?.let {
+        job.message?.let { raw ->
             Spacer(Modifier.height(6.dp))
-            Text(it, color = TextLo, fontSize = 11.sp, fontFamily = Mono, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            val plain = if (job.status == JobStatus.FAILED) PlainErrors.explain(raw) else null
+            if (plain == null) {
+                Text(raw, color = TextLo, fontSize = 11.sp, fontFamily = Mono, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            } else {
+                var details by remember(job.id) { mutableStateOf(false) }
+                Text(plain, color = TextHi, fontSize = 13.sp)
+                Text(
+                    if (details) "▾ HIDE DETAILS" else "▸ DETAILS",
+                    color = TextLo,
+                    fontFamily = Mono,
+                    fontSize = 11.sp,
+                    letterSpacing = 1.sp,
+                    modifier = Modifier
+                        .padding(top = 4.dp)
+                        .clickable { details = !details },
+                )
+                if (details) {
+                    Text(raw, color = TextLo, fontSize = 11.sp, fontFamily = Mono, modifier = Modifier.padding(top = 2.dp))
+                }
+            }
         }
     }
 }

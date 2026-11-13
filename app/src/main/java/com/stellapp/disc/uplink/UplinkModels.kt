@@ -18,11 +18,29 @@ enum class DlFormat(
     MP3("MP3", false, "mp3", true, true, "Plays everywhere. Re-encoded, so pick a high bitrate."),
     M4A("M4A", false, "m4a", true, true, "AAC audio. Often the original on YouTube, so no quality lost."),
     OPUS("OPUS", false, "opus", true, false, "Small files, great quality. Usually the original on YouTube."),
-    FLAC("FLAC", false, "flac", false, false, "Lossless container. Only truly lossless if the source is."),
-    WAV("WAV", false, "wav", false, false, "Uncompressed and huge. No tags or cover art."),
     ORIGINAL("ORIGINAL", false, "best", false, false, "Best audio stream exactly as the site serves it."),
     MP4("MP4", true, "mp4", false, true, "H.264 video in MP4. Plays on almost anything."),
     MKV("MKV · BEST", true, "mkv", false, true, "Highest quality streams (VP9/AV1 + Opus) in MKV. Older phones may struggle."),
+}
+
+/** Autopilot's three quality levels. */
+enum class SimpleQuality(val label: String) { BEST("★ BEST"), BALANCED("◆ BALANCED"), SAVER("▽ DATA SAVER") }
+
+/** What Autopilot actually sends to the engine for a choice. */
+data class SimplePreset(val format: DlFormat, val kbps: Int, val maxHeight: Int, val blurb: String)
+
+fun simplePreset(video: Boolean, q: SimpleQuality): SimplePreset = if (!video) {
+    when (q) {
+        SimpleQuality.BEST -> SimplePreset(DlFormat.M4A, 320, 0, "The original signal, nothing lost. About 4–5 MB a song.")
+        SimpleQuality.BALANCED -> SimplePreset(DlFormat.MP3, 192, 0, "Plays on anything, even old car stereos. About 6 MB a song.")
+        SimpleQuality.SAVER -> SimplePreset(DlFormat.MP3, 96, 0, "Light on storage and data. About 3 MB a song.")
+    }
+} else {
+    when (q) {
+        SimpleQuality.BEST -> SimplePreset(DlFormat.MP4, 0, 1080, "Full HD (1080p). Roughly 100–200 MB per 10 minutes.")
+        SimpleQuality.BALANCED -> SimplePreset(DlFormat.MP4, 0, 720, "HD (720p). Roughly 50–90 MB per 10 minutes.")
+        SimpleQuality.SAVER -> SimplePreset(DlFormat.MP4, 0, 480, "480p. Roughly 25–45 MB per 10 minutes.")
+    }
 }
 
 sealed interface PlaylistTarget {
@@ -71,6 +89,10 @@ data class UplinkPrefs(
     val subtitles: Boolean = true,
     val subLangs: String = "en.*",
     val skipExisting: Boolean = true,
+    /** Autopilot (simple) or Manual control. */
+    val simpleMode: Boolean = true,
+    val simpleVideo: Boolean = false,
+    val simpleQuality: SimpleQuality = SimpleQuality.BEST,
 )
 
 enum class JobStatus {

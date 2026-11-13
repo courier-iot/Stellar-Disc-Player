@@ -135,12 +135,12 @@ fun SwapShareScreen(vm: PlayerViewModel, playlistId: String, animate: Boolean, o
 }
 
 @Composable
-private fun NearbyShare(name: String, tracks: List<Song>) {
+internal fun NearbyShare(name: String, tracks: List<Song>, move: com.stellapp.disc.swap.MoveExtras? = null) {
     val context = LocalContext.current
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
     var attempt by remember { mutableIntStateOf(0) }
-    val server = remember(tracks, attempt) { SwapServer(context.applicationContext, name, tracks) }
+    val server = remember(tracks, attempt) { SwapServer(context.applicationContext, name, tracks, move) }
     var code by remember(server) { mutableStateOf<String?>(null) }
     var error by remember(server) { mutableStateOf<String?>(null) }
     val sent by server.sent.collectAsStateWithLifecycle()
@@ -194,13 +194,15 @@ private fun NearbyShare(name: String, tracks: List<Song>) {
             }
             Spacer(Modifier.height(16.dp))
             Text(
-                "On your friend's phone: Stellar Disc → swap icon → Scan QR code",
+                if (move != null) "On the new phone: Stellar Disc → Settings → Receive from your old phone (or Swap → Scan QR code)"
+                else "On your friend's phone: Stellar Disc → swap icon → Scan QR code",
                 color = TextHi,
                 textAlign = TextAlign.Center,
             )
             Spacer(Modifier.height(8.dp))
             Text(
-                "Both phones need the same Wi-Fi, or your friend can join this phone's hotspot. Keep this screen open until they're done.",
+                if (move != null) "Both phones need the same Wi-Fi, or the new phone can join this phone's hotspot. Keep this screen open and plugged in until the move finishes."
+                else "Both phones need the same Wi-Fi, or your friend can join this phone's hotspot. Keep this screen open until they're done.",
                 color = TextLo,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center,

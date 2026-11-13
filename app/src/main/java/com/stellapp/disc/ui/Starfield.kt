@@ -115,6 +115,10 @@ fun Starfield(
     grid: Boolean = false,
     speed: Float = 1f,
 ) {
+    if (com.stellapp.disc.ui.theme.ThemeState.ink) {
+        InkPaper(modifier)
+        return
+    }
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
     val stars = remember { makeStars(190) }

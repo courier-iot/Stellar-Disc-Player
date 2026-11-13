@@ -3,29 +3,59 @@ package com.stellapp.disc.ui.theme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import com.stellapp.disc.R
+
+/** The two looks: the neon cockpit, or the manga page. */
+enum class UiStyle(val label: String) { CYBER("◉ CYBER"), INK("✎ INK & SCREENTONE") }
 
 /** App-wide look switches that plain colour values depend on. Compose state, so changes redraw. */
 object ThemeState {
     var pureBlack by mutableStateOf(false)
+    var style by mutableStateOf(UiStyle.CYBER)
+    var inkAccent by mutableStateOf(0)
+    val ink: Boolean get() = style == UiStyle.INK
 }
 
 private val DeepSpace = Color(0xFF05040D)
 
-/** The app background: deep space, or true black (#000) with the OLED option on. */
-val Void: Color get() = if (ThemeState.pureBlack) Color.Black else DeepSpace
-val PanelSolid = Color(0xFF0E0B1F)
-val Panel = Color(0xCC0E0B1F)
-val TextHi = Color(0xFFE8EAFF)
-val TextLo = Color(0xFF8C8FB5)
+/** Ink & Screentone: newsprint paper and black ink. */
+val Paper = Color(0xFFF3EFE6)
+val InkBlack = Color(0xFF111111)
 
-val Mono = FontFamily.Monospace
+/** The app background: deep space, true black (#000) with the OLED option on, or paper. */
+val Void: Color get() = when {
+    ThemeState.ink -> Paper
+    ThemeState.pureBlack -> Color.Black
+    else -> DeepSpace
+}
+val PanelSolid: Color get() = if (ThemeState.ink) Color.White else Color(0xFF0E0B1F)
+val Panel: Color get() = if (ThemeState.ink) Color.White else Color(0xCC0E0B1F)
+val TextHi: Color get() = if (ThemeState.ink) InkBlack else Color(0xFFE8EAFF)
+val TextLo: Color get() = if (ThemeState.ink) Color(0xFF4A4A4A) else Color(0xFF8C8FB5)
+
+/** Comic lettering for Ink (Bangers, SIL Open Font License). */
+val Bangers = FontFamily(Font(R.font.bangers))
+
+/** The label font: monospace in the cockpit, comic lettering on the page. */
+val Mono: FontFamily get() = if (ThemeState.ink) Bangers else FontFamily.Monospace
+
+/** Ink colours. [text] is the darker shade used for words and icons on paper. */
+data class InkAccent(val name: String, val primary: Color, val text: Color)
+
+val InkAccents = listOf(
+    InkAccent("Red ink", Color(0xFFD7263D), Color(0xFFA3172B)),
+    InkAccent("Blue ink", Color(0xFF1F5FD6), Color(0xFF17459C)),
+    InkAccent("Pure ink", InkBlack, InkBlack),
+)
 
 /**
  * An accent gradient. [primary] → [secondary] is the true gradient (play button, bars, disc rim).
@@ -49,6 +79,26 @@ val Accents = listOf(
 
 @Composable
 fun DiscTheme(accentIndex: Int, content: @Composable () -> Unit) {
+    if (ThemeState.ink) {
+        val ink = InkAccents[ThemeState.inkAccent.coerceIn(0, InkAccents.lastIndex)]
+        val paperScheme = lightColorScheme(
+            primary = ink.primary,
+            onPrimary = Color.White,
+            secondary = ink.text,
+            onSecondary = Color.White,
+            tertiary = InkBlack,
+            onTertiary = Color.White,
+            background = Paper,
+            onBackground = InkBlack,
+            surface = Color.White,
+            onSurface = InkBlack,
+            surfaceVariant = Color(0xFFE4DFD3),
+            onSurfaceVariant = Color(0xFF4A4A4A),
+            outline = InkBlack,
+        )
+        MaterialTheme(colorScheme = paperScheme, typography = Typography(), content = content)
+        return
+    }
     val a = Accents[accentIndex.coerceIn(0, Accents.lastIndex)]
     val scheme = darkColorScheme(
         primary = a.primary,

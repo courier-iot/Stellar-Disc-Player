@@ -122,6 +122,15 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     var showCredits by rememberSaveable { mutableStateOf(false) }
     var showStats by rememberSaveable { mutableStateOf(false) }
     var showTips by rememberSaveable { mutableStateOf(false) }
+    var showMove by rememberSaveable { mutableStateOf(false) }
+    // A move finished: rescan and restore the old phone's playlists and settings.
+    val movedBackup by com.stellapp.disc.swap.SwapReceiver.backup.collectAsStateWithLifecycle()
+    LaunchedEffect(movedBackup) {
+        movedBackup?.let {
+            com.stellapp.disc.swap.SwapReceiver.consumeBackup()
+            vm.restoreMovedBackup(it)
+        }
+    }
     var showSwap by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var showEq by rememberSaveable { mutableStateOf(false) }
@@ -151,7 +160,7 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
     // Only the screen on top animates: anything fully covered stops drawing, which saves battery.
     val animate = animateSetting && !inPip
     val playerUp = showPlayer && state.current != null
-    val toolUp = showUplink || showSwap || showShare || showSettings || showYtSignIn || showEq || showCredits || showStats || showTips
+    val toolUp = showUplink || showSwap || showShare || showSettings || showYtSignIn || showEq || showCredits || showStats || showTips || showMove
     val homeAnimate = animate && !(playerUp || showSearch || showGroup || toolUp || showVideo)
     val audioOnly by vm.audioOnly.collectAsStateWithLifecycle()
     // With "audio only" on, videos open in Now Playing instead of fullscreen.
@@ -388,6 +397,11 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
                 onOpenYtSignIn = { showYtSignIn = true },
                 onOpenStats = { showStats = true },
                 onOpenTips = { showTips = true },
+                onOpenMoveSend = { showMove = true },
+                onOpenMoveReceive = {
+                    showSettings = false
+                    showSwap = true
+                },
             )
         }
 
@@ -401,6 +415,10 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
 
         Overlay(showStats) {
             StatsScreen(vm = vm, animate = animate && !showVideo, onClose = { showStats = false })
+        }
+
+        Overlay(showMove) {
+            MoveSendScreen(vm = vm, animate = animate && !showVideo, onClose = { showMove = false })
         }
 
         Overlay(showTips) {
@@ -566,6 +584,15 @@ fun InfoDialog(title: String, body: String, confirm: String, onConfirm: () -> Un
 @Composable
 fun neonTitleStyle(size: Int = 26): TextStyle {
     val primary = MaterialTheme.colorScheme.primary
+    if (com.stellapp.disc.ui.theme.ThemeState.ink) {
+        // Comic lettering: big, black, a little wider, no glow.
+        return TextStyle(
+            color = com.stellapp.disc.ui.theme.InkBlack,
+            fontFamily = com.stellapp.disc.ui.theme.Bangers,
+            fontSize = (size * 1.2f).sp,
+            letterSpacing = 1.5.sp,
+        )
+    }
     return TextStyle(
         color = primary,
         fontFamily = Mono,

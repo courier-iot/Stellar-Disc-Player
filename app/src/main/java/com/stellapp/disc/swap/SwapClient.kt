@@ -45,6 +45,17 @@ object SwapClient {
         }
     }
 
+    /** True when a VPN is running. VPNs usually swallow local-network traffic, which breaks Swap. */
+    fun vpnOn(context: Context): Boolean = try {
+        val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+        @Suppress("DEPRECATION")
+        cm.allNetworks.any { n ->
+            cm.getNetworkCapabilities(n)?.hasTransport(android.net.NetworkCapabilities.TRANSPORT_VPN) == true
+        }
+    } catch (_: Exception) {
+        false
+    }
+
     internal fun sameSubnet(addr: InetAddress, prefix: Int, target: Inet4Address): Boolean {
         if (addr !is Inet4Address || prefix !in 1..32) return false
         val a = addr.address
@@ -149,6 +160,12 @@ object SwapClient {
         }
 
     private const val RETRIES = 4
+
+    /** The old phone's backup file (move to a new phone), decrypted. */
+    suspend fun fetchBackup(base: String, token: String, key: ByteArray?): String = withContext(Dispatchers.IO) {
+        val raw = getBytes(base, "/backup?t=$token")
+        if (key != null) String(SwapCrypto.open(key, raw), Charsets.UTF_8) else String(raw, Charsets.UTF_8)
+    }
 
     @Volatile private var appContext: Context? = null
 

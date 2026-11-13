@@ -4,6 +4,7 @@ import android.content.SharedPreferences
 import com.stellapp.disc.HeroMode
 import com.stellapp.disc.ui.Backdrop
 import com.stellapp.disc.ui.theme.ThemeState
+import com.stellapp.disc.ui.theme.UiStyle
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -48,9 +49,33 @@ class AppSettings(private val prefs: SharedPreferences) {
     /** True-black backgrounds for OLED screens. */
     val pureBlack: StateFlow<Boolean> = _pureBlack.asStateFlow()
 
+    private val _uiStyle = MutableStateFlow(
+        runCatching { UiStyle.valueOf(prefs.getString(KEY_UI_STYLE, null) ?: "CYBER") }.getOrDefault(UiStyle.CYBER)
+    )
+    /** Cyber cockpit or Ink & Screentone. */
+    val uiStyle: StateFlow<UiStyle> = _uiStyle.asStateFlow()
+
+    private val _inkAccent = MutableStateFlow(prefs.getInt(KEY_INK_ACCENT, 0))
+    val inkAccent: StateFlow<Int> = _inkAccent.asStateFlow()
+
+    fun setUiStyle(style: UiStyle) {
+        _uiStyle.value = style
+        ThemeState.style = style
+        prefs.edit().putString(KEY_UI_STYLE, style.name).apply()
+    }
+
+    fun setInkAccent(index: Int) {
+        val i = index.coerceIn(0, com.stellapp.disc.ui.theme.InkAccents.lastIndex)
+        _inkAccent.value = i
+        ThemeState.inkAccent = i
+        prefs.edit().putInt(KEY_INK_ACCENT, i).apply()
+    }
+
     init {
-        // The theme colours read this directly, so the very first frame is already right.
+        // The theme colours read these directly, so the very first frame is already right.
         ThemeState.pureBlack = _pureBlack.value
+        ThemeState.style = _uiStyle.value
+        ThemeState.inkAccent = _inkAccent.value
     }
 
     fun setPureBlack(on: Boolean) {
@@ -115,6 +140,8 @@ class AppSettings(private val prefs: SharedPreferences) {
         .put("heroMode", _heroMode.value.name)
         .put("btAutoplay", _btAutoplay.value)
         .put("pureBlack", _pureBlack.value)
+        .put("uiStyle", _uiStyle.value.name)
+        .put("inkAccent", _inkAccent.value)
 
     /** Applies whatever a backup contains (older backups simply have fewer keys). */
     fun restore(o: JSONObject) {
@@ -127,6 +154,8 @@ class AppSettings(private val prefs: SharedPreferences) {
         if (o.has("heroMode")) runCatching { setHeroMode(HeroMode.valueOf(o.optString("heroMode"))) }
         if (o.has("btAutoplay")) setBtAutoplay(o.optBoolean("btAutoplay", false))
         if (o.has("pureBlack")) setPureBlack(o.optBoolean("pureBlack", false))
+        if (o.has("uiStyle")) runCatching { setUiStyle(UiStyle.valueOf(o.optString("uiStyle"))) }
+        if (o.has("inkAccent")) setInkAccent(o.optInt("inkAccent", 0))
     }
 
     private companion object {
@@ -140,5 +169,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_CLEAR_VIEW = "clear_view"
         const val KEY_BT_AUTOPLAY = "bt_autoplay"
         const val KEY_PURE_BLACK = "pure_black"
+        const val KEY_UI_STYLE = "ui_style"
+        const val KEY_INK_ACCENT = "ink_accent"
     }
 }

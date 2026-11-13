@@ -3,6 +3,24 @@ package com.stellapp.disc.ui
 /** Shown once after each update. Keep the newest version first. */
 object WhatsNew {
     val notes: Map<String, String> = linkedMapOf(
+        "3.2.0" to """
+            ADDED
+            • Move to a new phone: send your music, videos, playlists and settings over Wi-Fi
+            • The new phone shows a storage bar and lets you pick: all, music, videos, by album,
+              artist or playlist, or Fit to space
+            • New theme: Ink & Screentone, a manga page in red, blue or black ink (Settings → Look)
+            • Uplink Autopilot: choose Music or Video, then Best, Balanced or Data saver
+            • Failed downloads now say what went wrong in plain words
+            • Swap tells you when a VPN is blocking it
+
+            REMOVED
+            • FLAC and WAV (sites only send compressed audio, so they just made bigger files)
+
+            CHANGED
+            • The engine spool-up screen no longer cuts off its text
+            • Settings → Uplink engine shows one status line; tinkering switches live in Engine room
+            • New Uplink wording to match the cockpit
+        """.trimIndent(),
         "3.1.2" to """
             CHANGED
             • Swap over a phone hotspot: connects even when Android says the hotspot has "no internet"

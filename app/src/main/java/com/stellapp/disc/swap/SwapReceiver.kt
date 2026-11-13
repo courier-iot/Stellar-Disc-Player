@@ -41,6 +41,12 @@ object SwapReceiver {
     private val _session = MutableStateFlow<SwapSession?>(null)
     val session: StateFlow<SwapSession?> = _session.asStateFlow()
 
+    private val _backup = MutableStateFlow<String?>(null)
+    /** After a move: the old phone's backup, waiting for the app to restore it. */
+    val backup: StateFlow<String?> = _backup.asStateFlow()
+
+    fun consumeBackup() { _backup.value = null }
+
     // ---------- starting ----------
 
     fun startNearby(context: Context, code: String, library: List<Song>) {
@@ -55,8 +61,10 @@ object SwapReceiver {
         job = scope.launch {
             val conn = SwapClient.connect(app, p)
             if (conn == null) {
+                val vpn = SwapClient.vpnOn(app)
                 fail(
-                    "Couldn't reach the other phone. Check you're both on the same Wi-Fi (or you've joined their hotspot), " +
+                    (if (vpn) "A VPN is on. Pause it, or allow local network access in its settings, then try again. Check the other phone too.\n\n" else "") +
+                        "Couldn't reach the other phone. Check you're both on the same Wi-Fi (or you've joined their hotspot), " +
                         "and that their share screen is still open. Guest and public Wi-Fi often keep phones apart; a hotspot always works." +
                         (SwapClient.lastProblem?.let { "\n\nDetails:\n$it" } ?: ""),
                 )
@@ -89,7 +97,17 @@ object SwapReceiver {
         val items = manifest.tracks.zip(matches) { t, m ->
             SwapItem(track = t, match = m.kind, local = m.local, selected = m.kind == MatchKind.NEW)
         }
-        _session.value = SwapSession(source, SwapPhase.REVIEW, manifest.name, items = items, playlistName = manifest.name)
+        _session.value = SwapSession(
+            source,
+            SwapPhase.REVIEW,
+            manifest.name,
+            items = items,
+            playlistName = manifest.name,
+            // A move brings its own playlists in the backup, so no extra "shared" playlist.
+            makePlaylist = !manifest.isMove,
+            move = manifest.isMove,
+            groups = manifest.groups,
+        )
     }
 
     // ---------- review controls ----------
@@ -103,6 +121,38 @@ object SwapReceiver {
     fun selectNone() = edit { s -> s.copy(items = s.items.map { it.copy(selected = false) }) }
 
     fun setMakePlaylist(on: Boolean) = edit { it.copy(makePlaylist = on) }
+
+    // ---------- moving to a new phone ----------
+
+    /** Ticks or unticks [indices] (things already on this phone stay unticked). */
+    fun setSelected(indices: Collection<Int>, on: Boolean) = edit { s ->
+        val set = indices.toHashSet()
+        s.copy(items = s.items.mapIndexed { i, it -> if (i in set && it.match != MatchKind.HAVE) it.copy(selected = on) else it })
+    }
+
+    /** Quick picks: ticks exactly the new files that pass [keep]. */
+    fun pick(keep: (RemoteTrack) -> Boolean) = edit { s ->
+        s.copy(items = s.items.map { it.copy(selected = it.match == MatchKind.NEW && keep(it.track)) })
+    }
+
+    /** Ticks new files in [priority] order until [budgetBytes] is used up. */
+    fun fitToSpace(budgetBytes: Long, priority: FitPriority) = edit { s ->
+        val order = s.items.indices
+            .filter { s.items[it].match == MatchKind.NEW }
+            .sortedWith(fitOrder(s.items, priority))
+        var left = budgetBytes
+        val chosen = HashSet<Int>()
+        for (i in order) {
+            val size = s.items[i].track.size.coerceAtLeast(0L)
+            if (size <= left) {
+                chosen += i
+                left -= size
+            }
+        }
+        s.copy(items = s.items.mapIndexed { i, it -> it.copy(selected = i in chosen) })
+    }
+
+    fun setIncludeBackup(on: Boolean) = edit { it.copy(includeBackup = on) }
 
     fun setPlaylistName(name: String) = edit { it.copy(playlistName = name) }
 
@@ -178,6 +228,16 @@ object SwapReceiver {
             } finally {
                 withContext(NonCancellable) {
                     dir.deleteRecursively()
+                    var backupNote: String? = null
+                    if (s.move && s.includeBackup && !cancelled) {
+                        backupNote = try {
+                            _session.update { it?.copy(message = "Bringing over playlists and settings…") }
+                            _backup.value = SwapClient.fetchBackup(b, t, swapKey)
+                            "restoring playlists & settings"
+                        } catch (e: Exception) {
+                            "couldn't fetch playlists & settings"
+                        }
+                    }
                     val current = _session.value ?: s
                     val playlistNote = finishPlaylist(current, saved)
                     if (saved.isNotEmpty()) UplinkManager.announce(FinishedBatch(saved.values.toList(), queue = false))
@@ -187,6 +247,7 @@ object SwapReceiver {
                         append("Received ${saved.size}")
                         if (failed > 0) append(" · $failed failed")
                         playlistNote?.let { append(" · $it") }
+                        backupNote?.let { append(" · $it") }
                     }
                     _session.update { it?.copy(phase = SwapPhase.DONE, message = msg, current = -1) }
                 }
@@ -262,3 +323,21 @@ object SwapReceiver {
         return "$base.$ext"
     }
 }
+
+/** What Fit to space fills first. */
+enum class FitPriority(val label: String) {
+    MUSIC("MUSIC FIRST"),
+    VIDEOS("VIDEOS FIRST"),
+    FAVOURITES("FAVOURITES FIRST"),
+}
+
+/** Order for Fit to space: the chosen kind first, then most played, then smallest (more fits). */
+internal fun fitOrder(items: List<SwapItem>, priority: FitPriority): Comparator<Int> =
+    compareBy<Int> { i ->
+        val t = items[i].track
+        when (priority) {
+            FitPriority.MUSIC -> if (t.isVideo) 1 else 0
+            FitPriority.VIDEOS -> if (t.isVideo) 0 else 1
+            FitPriority.FAVOURITES -> if (t.fav) 0 else 1
+        }
+    }.thenByDescending { items[it].track.plays }.thenBy { items[it].track.size }

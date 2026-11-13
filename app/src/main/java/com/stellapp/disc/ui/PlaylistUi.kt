@@ -41,7 +41,7 @@ import com.stellapp.disc.ui.theme.PanelSolid
 import com.stellapp.disc.ui.theme.TextHi
 import com.stellapp.disc.ui.theme.TextLo
 
-val DangerRed = Color(0xFFFF4D6D)
+val DangerRed: Color get() = if (com.stellapp.disc.ui.theme.ThemeState.ink) Color(0xFFB3122B) else Color(0xFFFF4D6D)
 
 @Composable
 fun NameDialog(

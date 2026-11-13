@@ -589,7 +589,7 @@ object UplinkManager {
             a += "--sub-langs" to o.subLangs.ifBlank { "en.*" }
             a += "--embed-subs" to null
         }
-        if (o.embed && f != DlFormat.WAV) {
+        if (o.embed) {
             a += "--embed-metadata" to null
             if (f.embedArt) {
                 a += "--embed-thumbnail" to null

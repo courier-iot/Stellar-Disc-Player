@@ -18,9 +18,28 @@ data class RemoteTrack(
     val ext: String = "",
     val isVideo: Boolean = false,
     val link: String? = null,
+    /** Move-to-a-new-phone only: whether it's a favourite, and how often it was played. */
+    val fav: Boolean = false,
+    val plays: Int = 0,
 )
 
-data class RemoteManifest(val name: String, val tracks: List<RemoteTrack>)
+/** A named set of tracks (a playlist on the old phone), by [RemoteTrack.index]. */
+data class RemoteGroup(val name: String, val indices: List<Int>)
+
+/** [kind] is "playlist" for a normal share, or "move" for a whole library going to a new phone. */
+data class RemoteManifest(
+    val name: String,
+    val tracks: List<RemoteTrack>,
+    val kind: String = KIND_PLAYLIST,
+    val groups: List<RemoteGroup> = emptyList(),
+) {
+    val isMove: Boolean get() = kind == KIND_MOVE
+
+    companion object {
+        const val KIND_PLAYLIST = "playlist"
+        const val KIND_MOVE = "move"
+    }
+}
 
 fun RemoteManifest.toJson(): String {
     val arr = JSONArray()
@@ -37,13 +56,21 @@ fun RemoteManifest.toJson(): String {
                 .put("ext", t.ext)
                 .put("video", t.isVideo)
                 .put("link", t.link ?: "")
+                .put("fav", t.fav)
+                .put("plays", t.plays)
         )
+    }
+    val groupArr = JSONArray()
+    groups.forEach { g ->
+        groupArr.put(JSONObject().put("name", g.name).put("i", JSONArray(g.indices)))
     }
     return JSONObject()
         .put("app", "stellar-disc")
         .put("v", 1)
+        .put("kind", kind)
         .put("name", name)
         .put("tracks", arr)
+        .put("groups", groupArr)
         .toString()
 }
 
@@ -64,9 +91,23 @@ fun parseManifest(text: String): RemoteManifest {
             ext = t.optString("ext", ""),
             isVideo = t.optBoolean("video", false),
             link = t.optString("link", "").ifBlank { null },
+            fav = t.optBoolean("fav", false),
+            plays = t.optInt("plays", 0),
         )
     }
-    return RemoteManifest(o.optString("name", "Shared playlist"), tracks)
+    val groups = o.optJSONArray("groups")?.let { ga ->
+        (0 until ga.length()).mapNotNull { i ->
+            val g = ga.optJSONObject(i) ?: return@mapNotNull null
+            val idx = g.optJSONArray("i") ?: return@mapNotNull null
+            RemoteGroup(g.optString("name", "Playlist"), (0 until idx.length()).map { idx.getInt(it) })
+        }
+    }.orEmpty()
+    return RemoteManifest(
+        o.optString("name", "Shared playlist"),
+        tracks,
+        kind = o.optString("kind", RemoteManifest.KIND_PLAYLIST),
+        groups = groups,
+    )
 }
 
 /** What the QR code holds: how to reach the sharing phone. */
@@ -137,7 +178,16 @@ data class SwapSession(
     val makePlaylist: Boolean = true,
     val playlistName: String = name,
     val current: Int = -1,
+    /** Moving a whole library from an old phone. */
+    val move: Boolean = false,
+    /** The old phone's playlists, for picking by playlist. */
+    val groups: List<RemoteGroup> = emptyList(),
+    /** Also bring playlists, favourites, play counts and settings (the backup file). */
+    val includeBackup: Boolean = true,
 ) {
+    /** Bytes of everything ticked that isn't already on this phone. */
+    val selectedBytes: Long get() = items.sumOf { if (it.selected && it.match != MatchKind.HAVE) it.track.size.coerceAtLeast(0L) else 0L }
+
     val selectedCount: Int get() = items.count { it.selected && it.match != MatchKind.HAVE }
     val doneCount: Int get() = items.count { it.state == ItemState.SAVED || it.state == ItemState.FAILED || it.state == ItemState.QUEUED }
 }
