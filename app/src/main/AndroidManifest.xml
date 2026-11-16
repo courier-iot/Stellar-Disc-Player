@@ -22,6 +22,11 @@
     <!-- Only for the optional real visualizer; asked for when you switch it on -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
 
+    <queries>
+        <!-- Hub Connect S: shares your listening with your Stellar Hub resident, if you turn it on -->
+        <package android:name="com.stellarhub.hubconnects" />
+    </queries>
+
     <application
         android:name=".StellarDiscApp"
         android:allowBackup="false"

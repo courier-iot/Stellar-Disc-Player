@@ -60,6 +60,8 @@ class PlaybackService : MediaSessionService() {
     private var tId = -1L
     private var tListened = 0L
     private var tDuration = 0L
+    private var tTitle: String? = null
+    private var tArtist: String? = null
     private var tLastTick = 0L
 
     /** Called when a track stops being the current one. */
@@ -77,6 +79,11 @@ class PlaybackService : MediaSessionService() {
             else -> ListenKind.PARTIAL
         }
         TasteStore.record(id, kind, listened)
+        when (kind) {   // tell Hub Connect S, if you've turned listening sharing on
+            ListenKind.COMPLETE -> HubShare.send(this, "complete", tTitle, tArtist, dur)
+            ListenKind.SKIP -> HubShare.send(this, "skip", tTitle, tArtist, dur)
+            else -> {}
+        }
     }
 
     override fun onCreate() {
@@ -121,6 +128,9 @@ class PlaybackService : MediaSessionService() {
                 finishListen(natural = reason == Player.MEDIA_ITEM_TRANSITION_REASON_AUTO || reason == Player.MEDIA_ITEM_TRANSITION_REASON_REPEAT)
                 tId = mediaItem?.mediaId?.toLongOrNull() ?: -1
                 tDuration = 0
+                tTitle = mediaItem?.mediaMetadata?.title?.toString()
+                tArtist = mediaItem?.mediaMetadata?.artist?.toString()
+                if (mediaItem != null) HubShare.send(this@PlaybackService, "play", tTitle, tArtist)
                 // Random rotation: trim songs well behind you and deal new ones onto the end.
                 if (Rotation.active && reason != Player.MEDIA_ITEM_TRANSITION_REASON_PLAYLIST_CHANGED) {
                     scope.launch { Rotation.onTrackChanged(player) }

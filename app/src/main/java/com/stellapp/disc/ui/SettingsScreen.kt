@@ -39,6 +39,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import com.stellapp.disc.HubShare
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -313,6 +314,13 @@ fun SettingsScreen(
                         if (fx.levelingSupported) "Evens out quiet and loud tracks, handy for downloads from different sites" else "Needs Android 9 or newer",
                         fx.leveling && fx.levelingSupported,
                     ) { if (fx.levelingSupported) AudioFx.setLeveling(it) }
+                    var hubShare by remember { mutableStateOf(HubShare.enabled(context)) }
+                    ToggleRow(
+                        "Share listening with Hub Connect S",
+                        if (HubShare.hubInstalled(context)) "Your Stellar Hub resident learns your music taste and listens along. Only titles, artists and finishes or skips are shared, and only with that app."
+                        else "Install Hub Connect S to share your listening with your Stellar Hub resident",
+                        hubShare,
+                    ) { HubShare.setEnabled(context, it); hubShare = it }
                     ToggleRow(
                         "Bluetooth auto-play",
                         "Starts playing when Bluetooth headphones or your car connect (while Stellar Disc is open or paused in the background)",

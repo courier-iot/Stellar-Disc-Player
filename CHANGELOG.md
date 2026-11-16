@@ -2,6 +2,11 @@
 
 Every release of Stellar Disc, newest first. Download builds from [Releases](https://github.com/courier-iot/Stellar-Disc-Player/releases).
 
+### v3.5.0
+**Added:** *Share listening with Hub Connect S* in Settings (off by default). When it's on, Stellar Disc tells Hub Connect S on this phone which song started, and whether you finished or skipped it, so your Stellar Hub resident learns your taste and can listen along. Only titles and artists are shared, and only with that one app.
+**Removed:** nothing
+**Changed:** nothing else
+
 ### v3.4.0
 **Added:** play by name for voice assistants: "play Bohemian Rhapsody", "play some Daft Punk", "play the album Discovery", "play my Gym playlist" or just "play music" from Stella (StellAI), Google Assistant, Android Auto and others finds the songs in your library and plays them (a song keeps going with more by the same artist). Uplink requests from Stella: "download Midnight City by M83" (a link, or the top YouTube result for the words) as music or video at an Autopilot quality, optionally added to your queue when done. A *Let assistants start downloads* switch in Settings (off: Uplink opens filled in and you tap Download). Tests for the matching.
 **Removed:** nothing
