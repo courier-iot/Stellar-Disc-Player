@@ -30,6 +30,8 @@ data class Song(
     val streamMime: String? = null,
     /** Genre tag (Android 11+), used for genre mixes. */
     val genre: String = "",
+    /** A video that plays like music (joins shuffle mixes). Set by the view model, see MusicVideos. */
+    val asMusic: Boolean = false,
 ) {
     /** Key for cover-art caching: per album for music, per file for videos. */
     val artKey: Long get() = if (isVideo) -1000L - id else albumId
@@ -39,7 +41,10 @@ data class Song(
     val isStream: Boolean get() = streamPage != null
 
     /** Music lists show audio plus videos you downloaded, but not every phone video. */
-    val showsInMusic: Boolean get() = !isVideo || inAppFolder
+    val showsInMusic: Boolean get() = !isVideo || inAppFolder || asMusic
+
+    /** Songs, plus videos that count as music: what shuffle mixes and the rotation draw from. */
+    val playsAsMusic: Boolean get() = !isVideo || inAppFolder || asMusic
 }
 
 fun Song.toMediaItem(): MediaItem {

@@ -76,6 +76,8 @@ import com.stellapp.disc.ui.theme.TextLo
 import com.stellapp.disc.ui.theme.Void
 import com.stellapp.disc.ui.theme.Bangers
 import com.stellapp.disc.ui.theme.InkBlack
+import com.stellapp.disc.ui.theme.InkSheet
+import com.stellapp.disc.ui.theme.InkShadow
 import com.stellapp.disc.ui.theme.ThemeState
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.RectangleShape
@@ -102,13 +104,13 @@ fun Modifier.neonPanel(
         val paperFill = when (fill) {
             Color.Transparent -> Color.Transparent
             Color.Black -> Color.Black
-            else -> Color.White
+            else -> InkSheet
         }
         return this
             .then(
                 if (glow > 0.dp) Modifier.drawBehind {
                     val o = 4.dp.toPx()
-                    drawRect(InkBlack, topLeft = Offset(o, o), size = size)
+                    drawRect(InkShadow, topLeft = Offset(o, o), size = size)
                 } else Modifier
             )
             .background(paperFill, RectangleShape)
@@ -156,7 +158,7 @@ fun PlanetPlaceholder(seed: Long, modifier: Modifier = Modifier) {
     val body = lerp(primary, secondary, mix)
     if (ThemeState.ink) {
         // An inked record on screentone instead of a planet.
-        Canvas(modifier.background(Color.White)) {
+        Canvas(modifier.background(InkSheet)) {
             val step = 6.dp.toPx()
             var y = 0f
             while (y <= size.height) {
@@ -168,7 +170,7 @@ fun PlanetPlaceholder(seed: Long, modifier: Modifier = Modifier) {
                 y += step
             }
             val r = size.minDimension * 0.38f
-            drawCircle(Color.White, r, center)
+            drawCircle(InkSheet, r, center)
             drawCircle(InkBlack, r, center, style = androidx.compose.ui.graphics.drawscope.Stroke(size.minDimension * 0.035f))
             drawCircle(InkBlack.copy(alpha = 0.6f), r * 0.68f, center, style = androidx.compose.ui.graphics.drawscope.Stroke(size.minDimension * 0.015f))
             drawCircle(primary, r * (0.26f + 0.08f * mix), center)
@@ -226,7 +228,7 @@ fun NeonChip(label: String, selected: Boolean, onClick: () -> Unit) {
         Text(
             text = label,
             modifier = Modifier
-                .background(if (selected) primary else Color.White)
+                .background(if (selected) primary else InkSheet)
                 .border(2.dp, InkBlack)
                 .clickable(role = Role.Button, onClick = onClick)
                 .semantics {
@@ -235,7 +237,7 @@ fun NeonChip(label: String, selected: Boolean, onClick: () -> Unit) {
                     }
                 }
                 .padding(horizontal = 12.dp, vertical = 7.dp),
-            color = if (selected) Color.White else InkBlack,
+            color = if (selected) MaterialTheme.colorScheme.onPrimary else InkBlack,
             fontFamily = Bangers,
             fontSize = 15.sp,
             letterSpacing = 1.sp,

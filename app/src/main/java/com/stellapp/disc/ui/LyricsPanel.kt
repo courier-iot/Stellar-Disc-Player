@@ -60,6 +60,7 @@ fun LyricsPanel(vm: PlayerViewModel, song: Song, positionMs: Long, modifier: Mod
     val version by vm.lyricsVersion.collectAsStateWithLifecycle()
     val auto by vm.lyricsAuto.collectAsStateWithLifecycle()
     var pasting by remember { mutableStateOf(false) }
+    var searching by remember { mutableStateOf(false) }
     val importer = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         uri?.let { vm.importLyrics(song, it) }
     }
@@ -74,7 +75,7 @@ fun LyricsPanel(vm: PlayerViewModel, song: Song, positionMs: Long, modifier: Mod
             when (val l = load) {
                 LyricsLoad.Loading -> CircularProgressIndicator(color = primary, modifier = Modifier.align(Alignment.Center))
                 LyricsLoad.None -> Text(
-                    "No lyrics for this track yet.\nFind them online, paste them, or import an .lrc file.",
+                    "No lyrics for this track yet.\nFind them online, search by hand, paste them, or import an .lrc file.",
                     color = TextLo,
                     textAlign = TextAlign.Center,
                     modifier = Modifier
@@ -109,9 +110,17 @@ fun LyricsPanel(vm: PlayerViewModel, song: Song, positionMs: Long, modifier: Mod
                 Text("from ${it.lyrics.source}", color = TextLo, fontFamily = Mono, fontSize = 10.sp)
             }
             NeonChip("FIND ONLINE", false) { vm.findLyricsOnline(song) }
+            NeonChip("⌕ SEARCH", false) { searching = true }
             NeonChip("PASTE", false) { pasting = true }
             NeonChip("IMPORT .LRC", false) { importer.launch(arrayOf("*/*")) }
             if (load is LyricsLoad.Ready) NeonChip("REMOVE", false) { vm.removeLyrics(song) }
+        }
+    }
+
+    if (searching) {
+        LyricsSearchDialog(vm, song, onDismiss = { searching = false }) { hit ->
+            vm.saveLyrics(song, hit.text)
+            searching = false
         }
     }
 
@@ -187,6 +196,107 @@ fun TextEntryDialog(title: String, hint: String, initial: String = "", onDismiss
                 TextButton(onClick = onDismiss) { Text("CANCEL", color = TextLo, fontFamily = Mono, letterSpacing = 2.sp) }
                 TextButton(onClick = { if (text.isNotBlank()) onConfirm(text) }) {
                     Text("SAVE", color = primary, fontFamily = Mono, letterSpacing = 2.sp, fontWeight = FontWeight.Bold)
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Manual match: fix the title or artist, search, and pick the right result yourself.
+ * Synced results come first; each shows its length so you can match it to your copy.
+ */
+@Composable
+private fun LyricsSearchDialog(
+    vm: PlayerViewModel,
+    song: Song,
+    onDismiss: () -> Unit,
+    onPick: (com.stellapp.disc.lyrics.LyricsHit) -> Unit,
+) {
+    val primary = MaterialTheme.colorScheme.primary
+    var title by remember { mutableStateOf(song.title) }
+    var artist by remember { mutableStateOf(if (song.artist.equals("Unknown artist", true)) "" else song.artist) }
+    var query by remember { mutableStateOf<Pair<String, String>?>(title to artist) }
+    var busy by remember { mutableStateOf(false) }
+    var hits by remember { mutableStateOf<List<com.stellapp.disc.lyrics.LyricsHit>?>(null) }
+    LaunchedEffect(query) {
+        val q = query ?: return@LaunchedEffect
+        if (q.first.isBlank()) return@LaunchedEffect
+        busy = true
+        hits = vm.searchLyrics(q.first, q.second)
+        busy = false
+    }
+    val songSec = (song.durationMs / 1000).toInt()
+
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .heightIn(max = 620.dp)
+                .neonPanel(primary, glow = 20.dp, fill = PanelSolid)
+                .padding(18.dp)
+        ) {
+            Text("MANUAL MATCH", style = neonTitleStyle(18))
+            Text("Fix the words if the tags are off, then pick the right one.", color = TextLo, fontSize = 12.sp)
+            Spacer(Modifier.height(10.dp))
+            NeonTextField(title, { title = it }, placeholder = "Song title")
+            Spacer(Modifier.height(8.dp))
+            NeonTextField(artist, { artist = it }, placeholder = "Artist (optional)")
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                NeonChip(if (busy) "SEARCHING…" else "⌕ SEARCH", false) { if (!busy) query = title.trim() to artist.trim() }
+                Spacer(Modifier.weight(1f))
+                TextButton(onClick = onDismiss) { Text("CLOSE", color = TextLo, fontFamily = Mono, letterSpacing = 2.sp) }
+            }
+            Spacer(Modifier.height(6.dp))
+            val list = hits
+            when {
+                busy -> Box(Modifier.fillMaxWidth().padding(20.dp), contentAlignment = Alignment.Center) {
+                    CircularProgressIndicator(color = primary)
+                }
+                list == null -> Unit
+                list.isEmpty() -> Text(
+                    "Nothing found. Try fewer words, or just the title.",
+                    color = TextLo,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(vertical = 12.dp),
+                )
+                else -> LazyColumn(Modifier.weight(1f, fill = false)) {
+                    itemsIndexed(list) { _, hit ->
+                        val diff = if (hit.durationSec > 0 && songSec > 0) kotlin.math.abs(hit.durationSec - songSec) else -1
+                        Column(
+                            Modifier
+                                .fillMaxWidth()
+                                .clickable { onPick(hit) }
+                                .padding(vertical = 9.dp)
+                        ) {
+                            Text(hit.title, color = TextHi, fontWeight = FontWeight.SemiBold, maxLines = 1)
+                            Text(
+                                listOf(hit.artist, hit.album).filter { it.isNotBlank() }.joinToString(" · "),
+                                color = TextLo,
+                                fontSize = 12.sp,
+                                maxLines = 1,
+                            )
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    if (hit.synced) "◉ SYNCED" else "○ PLAIN",
+                                    color = if (hit.synced) primary else TextLo,
+                                    fontFamily = Mono,
+                                    fontSize = 10.sp,
+                                )
+                                if (hit.durationSec > 0) {
+                                    Text(
+                                        "%d:%02d".format(hit.durationSec / 60, hit.durationSec % 60) +
+                                            if (diff in 0..3) " ✓ LENGTH MATCHES" else "",
+                                        color = if (diff in 0..3) primary else TextLo,
+                                        fontFamily = Mono,
+                                        fontSize = 10.sp,
+                                    )
+                                }
+                                Text(hit.source, color = TextLo, fontFamily = Mono, fontSize = 10.sp)
+                            }
+                        }
+                    }
                 }
             }
         }

@@ -22,14 +22,20 @@ object ThemeState {
     var pureBlack by mutableStateOf(false)
     var style by mutableStateOf(UiStyle.CYBER)
     var inkAccent by mutableStateOf(0)
+    /** Ink & Screentone on charcoal paper with light ink. */
+    var inkDark by mutableStateOf(false)
     val ink: Boolean get() = style == UiStyle.INK
 }
 
 private val DeepSpace = Color(0xFF05040D)
 
-/** Ink & Screentone: newsprint paper and black ink. */
-val Paper = Color(0xFFF3EFE6)
-val InkBlack = Color(0xFF111111)
+/** Ink & Screentone: newsprint paper and black ink, or charcoal paper and pale grey ink. */
+val Paper: Color get() = if (ThemeState.inkDark) Color(0xFF2A2A2D) else Color(0xFFF3EFE6)
+val InkBlack: Color get() = if (ThemeState.inkDark) Color(0xFFE2DED4) else Color(0xFF111111)
+/** Speech-balloon white: the fill of panels and chips on the page. */
+val InkSheet: Color get() = if (ThemeState.inkDark) Color(0xFF3A3A3E) else Color.White
+/** The hard drop shadow behind panels. */
+val InkShadow: Color get() = if (ThemeState.inkDark) Color(0xFF111113) else Color(0xFF111111)
 
 /** The app background: deep space, true black (#000) with the OLED option on, or paper. */
 val Void: Color get() = when {
@@ -37,10 +43,14 @@ val Void: Color get() = when {
     ThemeState.pureBlack -> Color.Black
     else -> DeepSpace
 }
-val PanelSolid: Color get() = if (ThemeState.ink) Color.White else Color(0xFF0E0B1F)
-val Panel: Color get() = if (ThemeState.ink) Color.White else Color(0xCC0E0B1F)
+val PanelSolid: Color get() = if (ThemeState.ink) InkSheet else Color(0xFF0E0B1F)
+val Panel: Color get() = if (ThemeState.ink) InkSheet else Color(0xCC0E0B1F)
 val TextHi: Color get() = if (ThemeState.ink) InkBlack else Color(0xFFE8EAFF)
-val TextLo: Color get() = if (ThemeState.ink) Color(0xFF4A4A4A) else Color(0xFF8C8FB5)
+val TextLo: Color get() = when {
+    ThemeState.ink && ThemeState.inkDark -> Color(0xFFA19D95)
+    ThemeState.ink -> Color(0xFF4A4A4A)
+    else -> Color(0xFF8C8FB5)
+}
 
 /** Comic lettering for Ink (Bangers, SIL Open Font License). */
 val Bangers = FontFamily(Font(R.font.bangers))
@@ -54,8 +64,19 @@ data class InkAccent(val name: String, val primary: Color, val text: Color)
 val InkAccents = listOf(
     InkAccent("Red ink", Color(0xFFD7263D), Color(0xFFA3172B)),
     InkAccent("Blue ink", Color(0xFF1F5FD6), Color(0xFF17459C)),
-    InkAccent("Pure ink", InkBlack, InkBlack),
+    InkAccent("Pure ink", Color(0xFF111111), Color(0xFF111111)),
 )
+
+/** The same inks, lightened so they read on charcoal paper. */
+val InkAccentsDark = listOf(
+    InkAccent("Red ink", Color(0xFFFF5A6E), Color(0xFFFF8A97)),
+    InkAccent("Blue ink", Color(0xFF6E9BFF), Color(0xFF9DBBFF)),
+    InkAccent("Pure ink", Color(0xFFE2DED4), Color(0xFFE2DED4)),
+)
+
+/** The ink in use right now (follows the charcoal switch). */
+val currentInk: InkAccent get() =
+    (if (ThemeState.inkDark) InkAccentsDark else InkAccents)[ThemeState.inkAccent.coerceIn(0, InkAccents.lastIndex)]
 
 /**
  * An accent gradient. [primary] → [secondary] is the true gradient (play button, bars, disc rim).
@@ -80,7 +101,26 @@ val Accents = listOf(
 @Composable
 fun DiscTheme(accentIndex: Int, content: @Composable () -> Unit) {
     if (ThemeState.ink) {
-        val ink = InkAccents[ThemeState.inkAccent.coerceIn(0, InkAccents.lastIndex)]
+        val ink = currentInk
+        if (ThemeState.inkDark) {
+            val charcoalScheme = darkColorScheme(
+                primary = ink.primary,
+                onPrimary = Paper,
+                secondary = ink.text,
+                onSecondary = Paper,
+                tertiary = InkBlack,
+                onTertiary = Paper,
+                background = Paper,
+                onBackground = InkBlack,
+                surface = InkSheet,
+                onSurface = InkBlack,
+                surfaceVariant = Color(0xFF323236),
+                onSurfaceVariant = TextLo,
+                outline = InkBlack,
+            )
+            MaterialTheme(colorScheme = charcoalScheme, typography = Typography(), content = content)
+            return
+        }
         val paperScheme = lightColorScheme(
             primary = ink.primary,
             onPrimary = Color.White,

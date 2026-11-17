@@ -6,14 +6,20 @@ import android.content.SharedPreferences
 import android.content.pm.PackageManager
 import android.media.audiofx.BassBoost
 import android.media.audiofx.Equalizer
+import android.media.audiofx.LoudnessEnhancer
+import android.media.audiofx.PresetReverb
+import android.media.audiofx.Virtualizer
 import android.media.audiofx.Visualizer
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import org.json.JSONArray
+import org.json.JSONObject
 import kotlin.math.hypot
 import kotlin.math.ln
+import kotlin.math.log10
 import kotlin.math.pow
 
 /**
@@ -24,6 +30,50 @@ object AudioFx {
     const val BARS = 32
 
     data class Band(val centerHz: Int, val level: Int)
+
+    /** Reverb rooms, in PresetReverb's order (0 = off). */
+    val REVERBS = listOf("Off", "Small room", "Medium room", "Large room", "Medium hall", "Large hall", "Plate")
+
+    /** A sound you saved yourself: every slider, plus speed and pitch. */
+    data class SoundPreset(
+        val name: String,
+        val levels: List<Int>,
+        val bass: Int,
+        val virtualizer: Int,
+        val loudness: Int,
+        val reverb: Int,
+        val balance: Int,
+        val speed: Float,
+        val pitch: Float,
+    ) {
+        fun toJson(): JSONObject = JSONObject()
+            .put("name", name)
+            .put("levels", JSONArray(levels))
+            .put("bass", bass)
+            .put("virt", virtualizer)
+            .put("loud", loudness)
+            .put("reverb", reverb)
+            .put("balance", balance)
+            .put("speed", speed.toDouble())
+            .put("pitch", pitch.toDouble())
+
+        companion object {
+            fun from(o: JSONObject): SoundPreset {
+                val arr = o.optJSONArray("levels") ?: JSONArray()
+                return SoundPreset(
+                    name = o.optString("name", "My sound"),
+                    levels = (0 until arr.length()).map { arr.optInt(it) },
+                    bass = o.optInt("bass"),
+                    virtualizer = o.optInt("virt"),
+                    loudness = o.optInt("loud"),
+                    reverb = o.optInt("reverb"),
+                    balance = o.optInt("balance"),
+                    speed = o.optDouble("speed", 1.0).toFloat(),
+                    pitch = o.optDouble("pitch", 1.0).toFloat(),
+                )
+            }
+        }
+    }
 
     data class EqState(
         val supported: Boolean = false,
@@ -40,6 +90,22 @@ object AudioFx {
         /** Volume levelling (Android 9+): evens out loud and quiet tracks. */
         val leveling: Boolean = false,
         val levelingSupported: Boolean = android.os.Build.VERSION.SDK_INT >= 28,
+        val virtualizerSupported: Boolean = false,
+        /** 0..1000 */
+        val virtualizer: Int = 0,
+        val loudnessSupported: Boolean = false,
+        /** Extra gain in millibels, 0..1000 (+10 dB). */
+        val loudness: Int = 0,
+        val reverbSupported: Boolean = false,
+        /** Index into [REVERBS]. */
+        val reverb: Int = 0,
+        /** -100 (all left) .. 100 (all right). */
+        val balance: Int = 0,
+        val balanceSupported: Boolean = android.os.Build.VERSION.SDK_INT >= 28,
+        /** Your saved sounds. */
+        val customs: List<SoundPreset> = emptyList(),
+        /** Name of the saved sound in use, null once anything is changed by hand. */
+        val custom: String? = null,
     )
 
     private var prefs: SharedPreferences? = null
@@ -49,6 +115,9 @@ object AudioFx {
     private var bassBoost: BassBoost? = null
     private var viz: Visualizer? = null
     private var leveler: android.media.audiofx.DynamicsProcessing? = null
+    private var virt: Virtualizer? = null
+    private var loud: LoudnessEnhancer? = null
+    private var reverbFx: PresetReverb? = null
     private val smooth = FloatArray(BARS)
 
     private val _state = MutableStateFlow(EqState())
@@ -69,7 +138,32 @@ object AudioFx {
                 bass = p.getInt("bass", 0),
                 preset = p.getInt("preset", -1),
                 leveling = p.getBoolean("level_on", false),
+                virtualizer = p.getInt("virt", 0),
+                loudness = p.getInt("loud", 0),
+                reverb = p.getInt("reverb", 0),
+                balance = p.getInt("balance", 0),
+                customs = readCustoms(p),
+                custom = p.getString("custom", null),
             )
+        }
+    }
+
+    private fun readCustoms(p: SharedPreferences): List<SoundPreset> = try {
+        val arr = JSONArray(p.getString("customs", "[]") ?: "[]")
+        (0 until arr.length()).map { SoundPreset.from(arr.getJSONObject(it)) }
+    } catch (_: Throwable) {
+        emptyList()
+    }
+
+    private fun writeCustoms(list: List<SoundPreset>) {
+        prefs?.edit()?.putString("customs", JSONArray(list.map { it.toJson() }).toString())?.apply()
+    }
+
+    /** Hand-made change: no saved sound is "in use" any more. */
+    private fun dropCustom() {
+        if (_state.value.custom != null) {
+            prefs?.edit()?.remove("custom")?.apply()
+            _state.update { it.copy(custom = null) }
         }
     }
 
@@ -122,15 +216,50 @@ object AudioFx {
         } catch (_: Throwable) {
         }
 
+        try {
+            val v = Virtualizer(0, sessionId)
+            if (v.strengthSupported) {
+                v.setStrength(_state.value.virtualizer.toShort())
+                v.enabled = _state.value.enabled && _state.value.virtualizer > 0
+                virt = v
+                _state.update { it.copy(virtualizerSupported = true) }
+            } else {
+                v.release()
+            }
+        } catch (_: Throwable) {
+        }
+
+        try {
+            val l = LoudnessEnhancer(sessionId)
+            l.setTargetGain(_state.value.loudness)
+            l.enabled = _state.value.enabled && _state.value.loudness > 0
+            loud = l
+            _state.update { it.copy(loudnessSupported = true) }
+        } catch (_: Throwable) {
+        }
+
+        try {
+            val r = PresetReverb(0, sessionId)
+            r.preset = _state.value.reverb.coerceIn(0, REVERBS.lastIndex).toShort()
+            r.enabled = _state.value.enabled && _state.value.reverb > 0
+            reverbFx = r
+            _state.update { it.copy(reverbSupported = true) }
+        } catch (_: Throwable) {
+        }
+
         if (_state.value.visualizer) startVisualizer()
-        if (_state.value.leveling) startLeveler()
+        if (needsDynamics()) startLeveler()
     }
 
     fun setEnabled(on: Boolean) {
         prefs?.edit()?.putBoolean("eq_on", on)?.apply()
+        val st = _state.value
         try {
             eq?.enabled = on
-            bassBoost?.enabled = on && _state.value.bass > 0
+            bassBoost?.enabled = on && st.bass > 0
+            virt?.enabled = on && st.virtualizer > 0
+            loud?.enabled = on && st.loudness > 0
+            reverbFx?.enabled = on && st.reverb > 0
         } catch (_: Throwable) {
         }
         _state.update { it.copy(enabled = on) }
@@ -146,6 +275,7 @@ object AudioFx {
         val bands = readBands(e)
         prefs?.edit()?.putString("levels", bands.joinToString(",") { it.level.toString() })?.putInt("preset", -1)?.apply()
         _state.update { it.copy(bands = bands, preset = -1) }
+        dropCustom()
     }
 
     fun usePreset(index: Int) {
@@ -158,6 +288,7 @@ object AudioFx {
         val bands = readBands(e)
         prefs?.edit()?.putInt("preset", index)?.putString("levels", bands.joinToString(",") { it.level.toString() })?.apply()
         _state.update { it.copy(bands = bands, preset = index) }
+        dropCustom()
     }
 
     fun resetFlat() {
@@ -180,15 +311,126 @@ object AudioFx {
         }
         prefs?.edit()?.putInt("bass", s)?.apply()
         _state.update { it.copy(bass = s) }
+        dropCustom()
     }
 
-    /** Turns the real visualizer on/off. Needs the microphone permission to be granted first. */
+    /** Surround widening, 0..1000. Strongest on headphones. */
+    fun setVirtualizer(strength: Int) {
+        val s = strength.coerceIn(0, 1000)
+        try {
+            virt?.setStrength(s.toShort())
+            virt?.enabled = _state.value.enabled && s > 0
+        } catch (_: Throwable) {
+        }
+        prefs?.edit()?.putInt("virt", s)?.apply()
+        _state.update { it.copy(virtualizer = s) }
+        dropCustom()
+    }
+
+    /** Extra loudness in millibels, 0..1000 (up to +10 dB). */
+    fun setLoudness(gainMb: Int) {
+        val g = gainMb.coerceIn(0, 1000)
+        try {
+            loud?.setTargetGain(g)
+            loud?.enabled = _state.value.enabled && g > 0
+        } catch (_: Throwable) {
+        }
+        prefs?.edit()?.putInt("loud", g)?.apply()
+        _state.update { it.copy(loudness = g) }
+        dropCustom()
+    }
+
+    fun setReverb(index: Int) {
+        val i = index.coerceIn(0, REVERBS.lastIndex)
+        try {
+            reverbFx?.preset = i.toShort()
+            reverbFx?.enabled = _state.value.enabled && i > 0
+        } catch (_: Throwable) {
+        }
+        prefs?.edit()?.putInt("reverb", i)?.apply()
+        _state.update { it.copy(reverb = i) }
+        dropCustom()
+    }
+
+    /** Left/right balance, -100..100. Works whether or not the equalizer is on. */
+    @Synchronized
+    fun setBalance(value: Int) {
+        val b = value.coerceIn(-100, 100)
+        prefs?.edit()?.putInt("balance", b)?.apply()
+        _state.update { it.copy(balance = b) }
+        dropCustom()
+        if (needsDynamics()) {
+            if (leveler == null) startLeveler() else applyDynamics(leveler!!)
+        } else {
+            stopLeveler()
+        }
+    }
+
+    /** Saves everything as a named sound. Speed and pitch come from the player. */
+    fun saveCustom(name: String, speed: Float, pitch: Float) {
+        val st = _state.value
+        val clean = name.trim().ifBlank { "My sound" }.take(24)
+        val preset = SoundPreset(clean, st.bands.map { it.level }, st.bass, st.virtualizer, st.loudness, st.reverb, st.balance, speed, pitch)
+        val list = st.customs.filter { !it.name.equals(clean, true) } + preset
+        writeCustoms(list)
+        prefs?.edit()?.putString("custom", clean)?.apply()
+        _state.update { it.copy(customs = list, custom = clean) }
+    }
+
+    fun deleteCustom(name: String) {
+        val list = _state.value.customs.filter { it.name != name }
+        writeCustoms(list)
+        if (_state.value.custom == name) prefs?.edit()?.remove("custom")?.apply()
+        _state.update { it.copy(customs = list, custom = if (it.custom == name) null else it.custom) }
+    }
+
+    /** Loads a saved sound's effects (the caller sets speed and pitch on the player). */
+    fun applyCustom(p: SoundPreset) {
+        val e = eq
+        if (e != null && p.levels.size == e.numberOfBands.toInt()) {
+            try {
+                p.levels.forEachIndexed { i, level -> e.setBandLevel(i.toShort(), level.toShort()) }
+            } catch (_: Throwable) {
+            }
+            val bands = readBands(e)
+            prefs?.edit()?.putInt("preset", -1)?.putString("levels", bands.joinToString(",") { it.level.toString() })?.apply()
+            _state.update { it.copy(bands = bands, preset = -1) }
+        }
+        setBass(p.bass)
+        setVirtualizer(p.virtualizer)
+        setLoudness(p.loudness)
+        setReverb(p.reverb)
+        setBalance(p.balance)
+        if (!_state.value.enabled) setEnabled(true)
+        prefs?.edit()?.putString("custom", p.name)?.apply()
+        _state.update { it.copy(custom = p.name) }
+    }
+
+    /** Everything back to neutral (keeps your saved sounds). */
+    fun resetAll() {
+        resetFlat()
+        setBass(0)
+        setVirtualizer(0)
+        setLoudness(0)
+        setReverb(0)
+        setBalance(0)
+    }
+
+    /** Volume levelling on/off. */
     @Synchronized
     fun setLeveling(on: Boolean) {
         prefs?.edit()?.putBoolean("level_on", on)?.apply()
         _state.update { it.copy(leveling = on) }
-        if (on) startLeveler() else stopLeveler()
+        val dp = leveler
+        when {
+            !needsDynamics() -> stopLeveler()
+            dp == null -> startLeveler()
+            else -> applyDynamics(dp)
+        }
     }
+
+    /** One dynamics processor carries both the leveller and the balance. */
+    private fun needsDynamics(): Boolean = _state.value.leveling || _state.value.balance != 0
 
     /**
      * A gentle compressor plus a limiter on the whole mix: quiet tracks come up, loud ones are
@@ -201,9 +443,27 @@ object AudioFx {
                 android.media.audiofx.DynamicsProcessing.VARIANT_FAVOR_FREQUENCY_RESOLUTION,
                 2, false, 0, true, 1, false, 0, true,
             ).build().let { android.media.audiofx.DynamicsProcessing(0, session, it) }
+            applyDynamics(dp)
+            dp.enabled = true
+            leveler = dp
+        } catch (t: Throwable) {
+            leveler = null
+            _state.update { it.copy(levelingSupported = false, balanceSupported = false) }
+        }
+    }
+
+    private fun applyDynamics(dp: android.media.audiofx.DynamicsProcessing) {
+        if (android.os.Build.VERSION.SDK_INT < 28) return
+        val st = _state.value
+        val on = st.leveling
+        // Balance turns the other side down (never up, so nothing clips).
+        val b = st.balance / 100f
+        val leftDb = if (b > 0f) toDb(1f - b) else 0f
+        val rightDb = if (b < 0f) toDb(1f + b) else 0f
+        try {
             for (ch in 0 until 2) {
                 val band = dp.getMbcBandByChannelIndex(ch, 0)
-                band.setEnabled(true)
+                band.setEnabled(on)
                 band.setCutoffFrequency(20_000f)
                 band.setAttackTime(15f)
                 band.setReleaseTime(350f)
@@ -213,30 +473,30 @@ object AudioFx {
                 band.setNoiseGateThreshold(-90f)
                 band.setExpanderRatio(1f)
                 band.setPreGain(0f)
-                band.setPostGain(9f)
+                band.setPostGain(if (on) 9f else 0f)
                 dp.setMbcBandByChannelIndex(ch, 0, band)
                 val lim = dp.getLimiterByChannelIndex(ch)
-                lim.setEnabled(true)
+                lim.setEnabled(on)
                 lim.setAttackTime(1f)
                 lim.setReleaseTime(60f)
                 lim.setRatio(10f)
                 lim.setThreshold(-1.5f)
                 lim.setPostGain(0f)
                 dp.setLimiterByChannelIndex(ch, lim)
+                dp.setInputGainbyChannel(ch, if (ch == 0) leftDb else rightDb)
             }
-            dp.enabled = true
-            leveler = dp
-        } catch (t: Throwable) {
-            leveler = null
-            _state.update { it.copy(levelingSupported = false) }
+        } catch (_: Throwable) {
         }
     }
+
+    private fun toDb(gain: Float): Float = if (gain <= 0.001f) -60f else (20f * log10(gain)).coerceAtLeast(-60f)
 
     private fun stopLeveler() {
         try { leveler?.release() } catch (_: Throwable) {}
         leveler = null
     }
 
+    /** Turns the real visualizer on/off. Needs the microphone permission to be granted first. */
     fun setVisualizer(on: Boolean) {
         prefs?.edit()?.putBoolean("viz_on", on)?.apply()
         _state.update { it.copy(visualizer = on) }
@@ -316,8 +576,14 @@ object AudioFx {
     private fun releaseEffects() {
         try { eq?.release() } catch (_: Throwable) {}
         try { bassBoost?.release() } catch (_: Throwable) {}
+        try { virt?.release() } catch (_: Throwable) {}
+        try { loud?.release() } catch (_: Throwable) {}
+        try { reverbFx?.release() } catch (_: Throwable) {}
         eq = null
         bassBoost = null
+        virt = null
+        loud = null
+        reverbFx = null
         stopVisualizer()
         stopLeveler()
     }

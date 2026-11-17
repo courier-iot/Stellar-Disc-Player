@@ -19,6 +19,17 @@ data class LyricLine(val timeMs: Long, val text: String)
 /** Either [synced] (time-stamped lines) or [plain] text. [source] says where they came from. */
 data class Lyrics(val synced: List<LyricLine>?, val plain: String?, val source: String)
 
+/** One result in the manual lyrics search. [text] is the LRC or plain text to save. */
+data class LyricsHit(
+    val title: String,
+    val artist: String,
+    val album: String,
+    val durationSec: Int,
+    val synced: Boolean,
+    val text: String,
+    val source: String,
+)
+
 object LrcParser {
     private val stamp = Regex("""\[(\d{1,3}):(\d{2})(?:[.:](\d{1,3}))?]""")
     private val tag = Regex("""^\[[a-zA-Z]+:.*]$""")
@@ -171,11 +182,44 @@ object LrcLib {
         return null
     }
 
+    /** Every match for a free search, for the manual picker (synced ones first). */
+    suspend fun search(title: String, artist: String): List<LyricsHit> = withContext(Dispatchers.IO) {
+        try {
+            val t = title.trim()
+            val a = artist.trim().takeUnless { it.equals("Unknown artist", true) } ?: ""
+            val url = if (a.isBlank()) "https://lrclib.net/api/search?q=${enc(t)}"
+            else "https://lrclib.net/api/search?track_name=${enc(t)}&artist_name=${enc(a)}"
+            var body = get(url)
+            // Nothing for that exact pair: try it as one loose search.
+            if (a.isNotBlank() && (body == null || JSONArray(body).length() == 0)) body = get("https://lrclib.net/api/search?q=${enc("$a $t")}")
+            if (body == null) return@withContext emptyList()
+            val arr = JSONArray(body)
+            val out = ArrayList<LyricsHit>()
+            for (i in 0 until minOf(arr.length(), 25)) {
+                val o = arr.getJSONObject(i)
+                val text = pick(o) ?: continue
+                val synced = o.optString("syncedLyrics").let { it.isNotBlank() && it != "null" }
+                out += LyricsHit(
+                    title = o.optString("trackName"),
+                    artist = o.optString("artistName"),
+                    album = o.optString("albumName").takeIf { it != "null" } ?: "",
+                    durationSec = o.optDouble("duration", 0.0).toInt(),
+                    synced = synced,
+                    text = text,
+                    source = "lrclib.net",
+                )
+            }
+            out.sortedByDescending { it.synced }
+        } catch (e: Exception) {
+            emptyList()
+        }
+    }
+
     private fun pick(o: JSONObject): String? =
         o.optString("syncedLyrics").takeIf { it.isNotBlank() && it != "null" }
             ?: o.optString("plainLyrics").takeIf { it.isNotBlank() && it != "null" }
 
-    private fun get(url: String): String? {
+    internal fun get(url: String): String? {
         val conn = URL(url).openConnection() as HttpURLConnection
         return try {
             conn.connectTimeout = 6_000
@@ -189,5 +233,30 @@ object LrcLib {
         }
     }
 
-    private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
+    internal fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
+}
+
+/**
+ * The backup: lyrics.ovh, a free lyrics API (plain text only, no timestamps). Asked only when
+ * lrclib.net has nothing, and only when looking online is allowed.
+ */
+object LyricsOvh {
+    private val bracket = Regex("""\s*[(\[][^)\]]*[)\]]""")
+
+    suspend fun find(title: String, artist: String): String? = withContext(Dispatchers.IO) {
+        try {
+            val t = title.replace(bracket, "").trim()
+            val a = artist.trim()
+            if (t.isBlank() || a.isBlank() || a.equals("Unknown artist", true)) return@withContext null
+            // The path takes the words as path segments, so spaces are %20, not +.
+            val url = "https://api.lyrics.ovh/v1/${LrcLib.enc(a).replace("+", "%20")}/${LrcLib.enc(t).replace("+", "%20")}"
+            val body = LrcLib.get(url) ?: return@withContext null
+            JSONObject(body).optString("lyrics")
+                .replace("\r\n", "\n")
+                .trim()
+                .takeIf { it.isNotBlank() && it != "null" }
+        } catch (e: Exception) {
+            null
+        }
+    }
 }

@@ -384,7 +384,8 @@ fun LibraryScreen(
                     currentId = currentId,
                     playing = state.isPlaying,
                     onPlay = { i ->
-                        if (group.songs[i].isVideo) playVideos(group.songs, i) else vm.playSong(group.songs[i])
+                        val picked = group.songs[i]
+                        if (picked.isVideo && !picked.playsAsMusic) playVideos(group.songs, i) else vm.playSong(picked)
                     },
                     onLongPress = { s -> openMenu(s, group.playlistId) },
                     selected = selected,

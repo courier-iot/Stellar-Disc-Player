@@ -34,7 +34,7 @@ class MainActivity : ComponentActivity() {
         setContent {
             val accent by vm.accentIndex.collectAsStateWithLifecycle()
             // Dark status/nav bar icons on Ink's paper, light ones in the cockpit.
-            val paper = com.stellapp.disc.ui.theme.ThemeState.ink
+            val paper = com.stellapp.disc.ui.theme.ThemeState.ink && !com.stellapp.disc.ui.theme.ThemeState.inkDark
             androidx.compose.runtime.SideEffect {
                 androidx.core.view.WindowCompat.getInsetsController(window, window.decorView).apply {
                     isAppearanceLightStatusBars = paper

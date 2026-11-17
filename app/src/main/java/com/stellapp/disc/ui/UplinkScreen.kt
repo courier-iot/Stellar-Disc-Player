@@ -499,18 +499,33 @@ fun UplinkScreen(
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .height(48.dp)
+                        .height(56.dp)
                         .neonPanel(if (urlOk) secondary else TextLo.copy(alpha = 0.4f), glow = if (urlOk) 10.dp else 0.dp)
                         .clickable(enabled = urlOk && !streaming) { stream() },
                     contentAlignment = Alignment.Center,
                 ) {
-                    Text(
-                        if (streaming) "TUNING IN…" else "▷ LIVE FEED · PLAY WITHOUT SAVING",
-                        color = if (urlOk) secondary else TextLo,
-                        fontFamily = Mono,
-                        fontWeight = FontWeight.Bold,
-                        letterSpacing = 3.sp,
-                    )
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            if (streaming) "TUNING IN…" else "▷ LIVE FEED",
+                            color = if (urlOk) secondary else TextLo,
+                            fontFamily = Mono,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 3.sp,
+                            maxLines = 1,
+                            softWrap = false,
+                        )
+                        if (!streaming) {
+                            Text(
+                                "PLAY WITHOUT SAVING",
+                                color = (if (urlOk) secondary else TextLo).copy(alpha = 0.7f),
+                                fontFamily = Mono,
+                                fontSize = 10.sp,
+                                letterSpacing = 1.5.sp,
+                                maxLines = 1,
+                                softWrap = false,
+                            )
+                        }
+                    }
                 }
                 streamError?.let {
                     Text(PlainErrors.explain(it) ?: it, color = DangerRed, fontSize = 12.sp, modifier = Modifier.padding(top = 6.dp))

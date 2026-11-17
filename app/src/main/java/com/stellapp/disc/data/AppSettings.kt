@@ -41,6 +41,17 @@ class AppSettings(private val prefs: SharedPreferences) {
     )
     val heroMode: StateFlow<HeroMode> = _heroMode.asStateFlow()
 
+    private val _heroHidden = MutableStateFlow(prefs.getBoolean(KEY_HERO_HIDDEN, false))
+    val heroHidden: StateFlow<Boolean> = _heroHidden.asStateFlow()
+
+    private val _heroList = MutableStateFlow(prefs.getString(KEY_HERO_LIST, "") ?: "")
+    /** Key of the playlist the hero draws from in [HeroMode.CHOSEN_LIST] ("" = none yet). */
+    val heroList: StateFlow<String> = _heroList.asStateFlow()
+
+    private val _inkDark = MutableStateFlow(prefs.getBoolean(KEY_INK_DARK, false))
+    /** Ink & Screentone on charcoal paper instead of white. */
+    val inkDark: StateFlow<Boolean> = _inkDark.asStateFlow()
+
     private val _btAutoplay = MutableStateFlow(prefs.getBoolean(KEY_BT_AUTOPLAY, false))
     /** Start playing when Bluetooth audio connects. Read by the playback service. */
     val btAutoplay: StateFlow<Boolean> = _btAutoplay.asStateFlow()
@@ -76,6 +87,7 @@ class AppSettings(private val prefs: SharedPreferences) {
         ThemeState.pureBlack = _pureBlack.value
         ThemeState.style = _uiStyle.value
         ThemeState.inkAccent = _inkAccent.value
+        ThemeState.inkDark = _inkDark.value
     }
 
     fun setPureBlack(on: Boolean) {
@@ -129,6 +141,22 @@ class AppSettings(private val prefs: SharedPreferences) {
         prefs.edit().putString(KEY_HERO_MODE, m.name).apply()
     }
 
+    fun setHeroHidden(on: Boolean) {
+        _heroHidden.value = on
+        prefs.edit().putBoolean(KEY_HERO_HIDDEN, on).apply()
+    }
+
+    fun setHeroList(key: String) {
+        _heroList.value = key
+        prefs.edit().putString(KEY_HERO_LIST, key).apply()
+    }
+
+    fun setInkDark(on: Boolean) {
+        _inkDark.value = on
+        ThemeState.inkDark = on
+        prefs.edit().putBoolean(KEY_INK_DARK, on).apply()
+    }
+
     /** These settings as backup JSON. */
     fun toJson(): JSONObject = JSONObject()
         .put("accent", _accent.value)
@@ -142,6 +170,9 @@ class AppSettings(private val prefs: SharedPreferences) {
         .put("pureBlack", _pureBlack.value)
         .put("uiStyle", _uiStyle.value.name)
         .put("inkAccent", _inkAccent.value)
+        .put("heroHidden", _heroHidden.value)
+        .put("heroList", _heroList.value)
+        .put("inkDark", _inkDark.value)
 
     /** Applies whatever a backup contains (older backups simply have fewer keys). */
     fun restore(o: JSONObject) {
@@ -156,6 +187,9 @@ class AppSettings(private val prefs: SharedPreferences) {
         if (o.has("pureBlack")) setPureBlack(o.optBoolean("pureBlack", false))
         if (o.has("uiStyle")) runCatching { setUiStyle(UiStyle.valueOf(o.optString("uiStyle"))) }
         if (o.has("inkAccent")) setInkAccent(o.optInt("inkAccent", 0))
+        if (o.has("heroHidden")) setHeroHidden(o.optBoolean("heroHidden", false))
+        if (o.has("heroList")) setHeroList(o.optString("heroList", ""))
+        if (o.has("inkDark")) setInkDark(o.optBoolean("inkDark", false))
     }
 
     private companion object {
@@ -171,5 +205,8 @@ class AppSettings(private val prefs: SharedPreferences) {
         const val KEY_PURE_BLACK = "pure_black"
         const val KEY_UI_STYLE = "ui_style"
         const val KEY_INK_ACCENT = "ink_accent"
+        const val KEY_HERO_HIDDEN = "hero_hidden"
+        const val KEY_HERO_LIST = "hero_list"
+        const val KEY_INK_DARK = "ink_dark"
     }
 }

@@ -188,8 +188,9 @@ class PlaybackService : MediaSessionService() {
             scope.launch {
                 val items = try {
                     val hidden = getSharedPreferences("stellar_disc", MODE_PRIVATE).getStringSet("hidden_folders", emptySet()) ?: emptySet()
+                    com.stellapp.disc.data.MusicVideos.load(this@PlaybackService)
                     com.stellapp.disc.data.MusicRepository.loadSongs(this@PlaybackService, allVideos = false)
-                        .filter { !it.isVideo && it.folder !in hidden }
+                        .filter { com.stellapp.disc.data.MusicVideos.counts(it) && it.folder !in hidden }
                         .map { com.stellapp.disc.data.MetaStore.apply(it).toMediaItem() }
                 } catch (e: Exception) {
                     emptyList()

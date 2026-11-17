@@ -2,6 +2,11 @@
 
 Every release of Stellar Disc, newest first. Download builds from [Releases](https://github.com/courier-iot/Stellar-Disc-Player/releases).
 
+### v3.6.0
+**Added:** videos can count as music: Uplink videos always do, and any other video or whole folder can from its long-press menu, so they join shuffle mixes and the random rotation. Three new hero card picks (Hourly, Time-of-day, From a playlist: a random song, then the whole list shuffled) and a Hide the hero card switch. Charcoal paper for Ink & Screentone. A lyrics.ovh fallback when lrclib.net has nothing, and a manual lyrics search where you fix the title or artist and pick the match. The FX rack: surround, loudness, reverb, left/right balance, speed and pitch as side-by-side fold-down cards, plus your own saved sounds (every slider, speed and pitch).
+**Removed:** nothing
+**Changed:** Settings is a hub of six tiles (Visuals, Audio, FX rack, Uplink, Archive, System) with collapsible groups on each page. The player backdrop picker is an even grid with two-line names. Uplink's Live feed button is two short lines instead of one long one. Tapping a video that counts as music starts a shuffle mix instead of playing it alone. Volume levelling and balance share one dynamics processor.
+
 ### v3.5.0
 **Added:** *Share listening with Hub Connect S* in Settings (off by default). When it's on, Stellar Disc tells Hub Connect S on this phone which song started, and whether you finished or skipped it, so your Stellar Hub resident learns your taste and can listen along. Only titles and artists are shared, and only with that one app.
 **Removed:** nothing

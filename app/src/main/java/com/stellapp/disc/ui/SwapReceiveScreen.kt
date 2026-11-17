@@ -226,7 +226,7 @@ private fun Intro(
 
         SectionLabel("MOVING PHONES?")
         Text(
-            "On your old phone open Settings → Move to a new phone, then tap SCAN QR CODE above on this one. You choose what to bring and see if it fits before anything is sent.",
+            "On your old phone open Settings → Archive → Move to a new phone, then tap SCAN QR CODE above on this one. You choose what to bring and see if it fits before anything is sent.",
             color = TextLo,
             fontSize = 13.sp,
         )

@@ -457,7 +457,7 @@ object UplinkManager {
                 dir.deleteRecursively()
                 return
             }
-            update(id) { it.copy(message = "Waiting for Wi-Fi… (Settings → Uplink engine → Wi-Fi only)") }
+            update(id) { it.copy(message = "Waiting for Wi-Fi… (Settings → Uplink → Wi-Fi only)") }
             kotlinx.coroutines.delay(5_000)
         }
         update(id) { it.copy(status = JobStatus.DOWNLOADING, message = "Opening channel…") }

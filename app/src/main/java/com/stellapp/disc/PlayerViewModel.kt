@@ -24,6 +24,7 @@ import com.stellapp.disc.data.LinkStore
 import com.stellapp.disc.data.MetaOverride
 import com.stellapp.disc.data.MetaStore
 import com.stellapp.disc.data.MusicRepository
+import com.stellapp.disc.data.MusicVideos
 import com.stellapp.disc.data.PlayStat
 import com.stellapp.disc.data.PinStore
 import com.stellapp.disc.data.PlayStats
@@ -79,6 +80,7 @@ data class PlayerState(
     val queue: List<QueueEntry> = emptyList(),
     val currentIndex: Int = -1,
     val speed: Float = 1f,
+    val pitch: Float = 1f,
     val videoWidth: Int = 0,
     val videoHeight: Int = 0,
     val hasSubtitles: Boolean = false,
@@ -156,6 +158,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     val pureBlack: StateFlow<Boolean> = settings.pureBlack
     val uiStyle: StateFlow<com.stellapp.disc.ui.theme.UiStyle> = settings.uiStyle
     val inkAccent: StateFlow<Int> = settings.inkAccent
+    val inkDark: StateFlow<Boolean> = settings.inkDark
     val favourites: StateFlow<List<Long>> = FavStore.ids
 
     private val _wifiOnly = MutableStateFlow(UplinkManager.wifiOnly(app))
@@ -214,7 +217,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             val ok = withContext(Dispatchers.IO) { UplinkManager.verifySignIn(ctx) }
             if (!ok) {
                 _ytSignedIn.value = false
-                post("Your YouTube sign-in was reset by a system change. Sign in again in Settings → Uplink engine.")
+                post("Your YouTube sign-in was reset by a system change. Sign in again in Settings → Uplink.")
             }
         }
 
@@ -297,10 +300,11 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun publish() {
         val hidden = _hidden.value
-        val all = rawSongs.map { MetaStore.apply(it) }
+        MusicVideos.load(ctx)
+        val all = rawSongs.map { MetaStore.apply(it) }.map { if (it.isVideo && MusicVideos.counts(it)) it.copy(asMusic = true) else it }
         songById = all.associateBy { it.id.toString() }
         _songs.value = all.filter { it.folder !in hidden }
-        Rotation.resumeIfSaved(ctx, _songs.value.filter { !it.isVideo }.map { it.toMediaItem() })
+        Rotation.resumeIfSaved(ctx, _songs.value.filter { it.playsAsMusic && !it.isStream }.map { it.toMediaItem() })
         sync(rebuildQueue = true)
     }
 
@@ -345,19 +349,25 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
      * random rotation from the rest of the music library. No rules, just a random shuffle.
      */
     fun playSong(song: Song) {
-        if (song.isVideo || song.isStream) {
+        if (song.isStream || !song.playsAsMusic) {
             playList(listOf(song), 0)
             return
         }
         val c = controller ?: return
         // A rolling queue of 150 random songs: after song 50 the oldest drops off and a new one
         // is dealt onto the end, cycling through the whole library (see playback/Rotation.kt).
-        val library = _songs.value.filter { !it.isVideo && it.id != song.id }.map { it.toMediaItem() }
+        val library = _songs.value.filter { it.playsAsMusic && !it.isStream && it.id != song.id }.map { it.toMediaItem() }
         val items = Rotation.start(ctx, song.toMediaItem(), library)
         c.shuffleModeEnabled = false
         c.setMediaItems(items, 0, 0L)
         c.prepare()
         c.play()
+    }
+
+    /** Plays [first], then the rest of [list] in a fresh random order. */
+    fun playShuffledFrom(list: List<Song>, first: Song) {
+        val rest = list.filter { it.id != first.id }.shuffled()
+        playList(listOf(first) + rest, 0, shuffle = false)
     }
 
     fun shuffleAll(list: List<Song>) {
@@ -472,6 +482,29 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(speed = speed) }
     }
 
+    /** Pitch without changing speed (1.0 = normal). */
+    fun setPitch(pitch: Float) {
+        val c = controller ?: return
+        val p = pitch.coerceIn(0.5f, 2f)
+        c.playbackParameters = androidx.media3.common.PlaybackParameters(c.playbackParameters.speed, p)
+        _state.update { it.copy(pitch = p) }
+    }
+
+    /** Loads one of your saved sounds, including its speed and pitch. */
+    fun applySound(p: com.stellapp.disc.playback.AudioFx.SoundPreset) {
+        com.stellapp.disc.playback.AudioFx.applyCustom(p)
+        controller?.let { c ->
+            c.playbackParameters = androidx.media3.common.PlaybackParameters(p.speed.coerceIn(0.25f, 3f), p.pitch.coerceIn(0.5f, 2f))
+        }
+        _state.update { it.copy(speed = p.speed, pitch = p.pitch) }
+        post("Sound \"${p.name}\" loaded")
+    }
+
+    fun saveSound(name: String) {
+        com.stellapp.disc.playback.AudioFx.saveCustom(name, _state.value.speed, _state.value.pitch)
+        post("Saved \"${name.trim().ifBlank { "My sound" }.take(24)}\"")
+    }
+
     fun setSubtitles(on: Boolean) {
         val c = controller ?: return
         c.trackSelectionParameters = c.trackSelectionParameters.buildUpon()
@@ -496,8 +529,26 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun setBackdrop(b: com.stellapp.disc.ui.Backdrop) = settings.setBackdrop(b)
     fun setClearView(on: Boolean) = settings.setClearView(on)
     fun setHeroMode(m: HeroMode) = settings.setHeroMode(m)
+    val heroHidden: StateFlow<Boolean> = settings.heroHidden
+    val heroList: StateFlow<String> = settings.heroList
+    fun setHeroHidden(on: Boolean) = settings.setHeroHidden(on)
+    fun setHeroList(key: String) = settings.setHeroList(key)
 
     fun togglePinSong(id: Long) = PinStore.toggleSong(id)
+
+    /** Count one video (or its whole folder) as music, so it joins shuffle mixes. */
+    fun setVideoAsMusic(song: Song, on: Boolean, wholeFolder: Boolean = false) {
+        if (wholeFolder) MusicVideos.setFolder(ctx, song.folder, on) else MusicVideos.setOne(ctx, song.id, on)
+        publish()
+        post(
+            when {
+                wholeFolder && on -> "Videos in \"${song.folder.substringAfterLast('/')}\" now count as music"
+                wholeFolder -> "That folder's videos are videos again"
+                on -> "This video now counts as music"
+                else -> "This video no longer counts as music"
+            }
+        )
+    }
     fun togglePinPlaylist(id: String) = PinStore.togglePlaylist(id)
 
     fun importYtCookies(uri: Uri) {
@@ -668,6 +719,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     fun setPureBlack(on: Boolean) = settings.setPureBlack(on)
     fun setUiStyle(style: com.stellapp.disc.ui.theme.UiStyle) = settings.setUiStyle(style)
     fun setInkAccent(index: Int) = settings.setInkAccent(index)
+    fun setInkDark(on: Boolean) = settings.setInkDark(on)
 
     private val _strictOptions = MutableStateFlow(UplinkManager.strictOptions(app))
     val strictOptions: StateFlow<Boolean> = _strictOptions.asStateFlow()
@@ -731,6 +783,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
     suspend fun loadLyrics(song: Song, allowOnline: Boolean): Lyrics? = lyricsRepo.load(song, allowOnline)
     fun findLyricsOnline(song: Song) = lyricsRepo.findOnline(song)
     fun saveLyrics(song: Song, text: String) = lyricsRepo.save(song, text)
+    suspend fun searchLyrics(title: String, artist: String): List<com.stellapp.disc.lyrics.LyricsHit> = lyricsRepo.searchManual(title, artist)
     fun importLyrics(song: Song, uri: Uri) = lyricsRepo.import(song, uri)
     fun removeLyrics(song: Song) = lyricsRepo.remove(song)
 
@@ -899,6 +952,7 @@ class PlayerViewModel(app: Application) : AndroidViewModel(app) {
             queue = cachedQueue,
             currentIndex = c.currentMediaItemIndex,
             speed = c.playbackParameters.speed,
+            pitch = c.playbackParameters.pitch,
             videoWidth = size.width,
             videoHeight = size.height,
             hasSubtitles = c.currentTracks.containsType(C.TRACK_TYPE_TEXT),
@@ -944,4 +998,7 @@ enum class HeroMode(val label: String, val blurb: String) {
     FORGOTTEN("Forgotten gem", "Loved once, not heard in a while"),
     FRESH("Fresh arrival", "Newest addition to your library"),
     RANDOM("Random", "A surprise every time you open Home"),
+    HOURLY("Hourly pick", "A new song every hour, on the hour"),
+    TIME_OF_DAY("Time-of-day pick", "What you usually play at this time of day"),
+    CHOSEN_LIST("From a playlist", "A random song from a playlist you choose; play shuffles the whole list"),
 }

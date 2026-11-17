@@ -4,6 +4,7 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -100,7 +101,11 @@ private sealed interface Hero {
     val reason: String
     data class OfSong(val song: Song, override val reason: String, val queue: List<Song>) : Hero
     data class OfList(val group: SongGroup, override val reason: String) : Hero
+    /** A song drawn from a chosen playlist; playing it shuffles the whole list behind it. */
+    data class FromList(val song: Song, val group: SongGroup, override val reason: String) : Hero
 }
+
+private val DAY_PARTS = listOf("MORNING", "AFTERNOON", "EVENING", "LATE NIGHT")
 
 private const val DAY_MS = 24L * 3600 * 1000
 
@@ -113,6 +118,8 @@ private fun pickHero(
     listGroups: List<SongGroup>,
     pinnedLists: List<SongGroup>,
     seed: Long,
+    chosenList: String = "",
+    hour: Long = 0L,
 ): Hero? {
     if (songs.isEmpty()) return null
     val now = System.currentTimeMillis()
@@ -163,6 +170,39 @@ private fun pickHero(
             val mixed = songs.shuffled(rng)
             Hero.OfSong(mixed.first(), "RANDOM DRAW", mixed.take(40))
         }
+        HeroMode.HOURLY -> {
+            // Same song for the whole hour, a new one when the clock ticks over.
+            val music = songs.filter { it.showsInMusic }.ifEmpty { songs }.sortedBy { it.id }
+            val mixed = music.shuffled(kotlin.random.Random(hour * 31 + 7))
+            val h = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+            val label = when {
+                h == 0 -> "12 AM"
+                h < 12 -> "$h AM"
+                h == 12 -> "12 PM"
+                else -> "${h - 12} PM"
+            }
+            Hero.OfSong(mixed.first(), "THE $label PICK", mixed.take(40))
+        }
+        HeroMode.TIME_OF_DAY -> {
+            val part = TasteStore.bucketOf(now)
+            val music = songs.filter { it.showsInMusic }.ifEmpty { songs }
+            val fit = music.filter { s ->
+                val h = tastes[s.id]?.hours ?: return@filter false
+                h.getOrElse(part) { 0 } > 0 && h.getOrElse(part) { 0 } * 2 >= h.sum()
+            }.sortedByDescending { tastes[it.id]?.hours?.getOrElse(part) { 0 } ?: 0 }
+            if (fit.isNotEmpty()) {
+                val top = fit.take(25).shuffled(rng)
+                Hero.OfSong(top.first(), "YOUR ${DAY_PARTS[part]} PICK", top)
+            } else {
+                val mixed = music.shuffled(rng)
+                Hero.OfSong(mixed.first(), "FOR THIS ${DAY_PARTS[part]}", mixed.take(40))
+            }
+        }
+        HeroMode.CHOSEN_LIST -> {
+            val g = listGroups.firstOrNull { it.key == chosenList && it.songs.isNotEmpty() }
+            if (g == null) fallback
+            else Hero.FromList(g.songs[rng.nextInt(g.songs.size)], g, "FROM ${g.title.uppercase()}")
+        }
     }
 }
 
@@ -188,6 +228,8 @@ fun HomeScreen(
     val loading by vm.loading.collectAsStateWithLifecycle()
     val stats by vm.stats.collectAsStateWithLifecycle()
     val heroMode by vm.heroMode.collectAsStateWithLifecycle()
+    val heroHidden by vm.heroHidden.collectAsStateWithLifecycle()
+    val heroList by vm.heroList.collectAsStateWithLifecycle()
 
     val byId = remember(songs) { songs.associateBy { it.id } }
     val picks = remember(songs, tastes) { TasteStore.picks(songs) }
@@ -203,10 +245,16 @@ fun HomeScreen(
     val pinnedLists = remember(listGroups, pinnedListIds) { pinnedListIds.mapNotNull { id -> listGroups.firstOrNull { it.playlistId == id } } }
     val pinnedSongs = remember(pinnedSongIds, byId) { pinnedSongIds.mapNotNull { byId[it] } }
     val heroSeed = remember { System.nanoTime() }
-    val hero = remember(heroMode, songs, picks, stats, listGroups, pinnedLists) {
-        pickHero(heroMode, songs, picks, tastes, stats, listGroups, pinnedLists, heroSeed)
+    val hour = System.currentTimeMillis() / 3_600_000L
+    val hero = remember(heroMode, songs, picks, stats, listGroups, pinnedLists, heroList, hour) {
+        pickHero(heroMode, songs, picks, tastes, stats, listGroups, pinnedLists, heroSeed, heroList, hour)
     }
-    val heroSongId = (hero as? Hero.OfSong)?.song?.id
+    // With the card hidden, its song goes back into the picks row.
+    val heroSongId = if (heroHidden) null else when (hero) {
+        is Hero.OfSong -> hero.song.id
+        is Hero.FromList -> hero.song.id
+        else -> null
+    }
     val rowPicks = remember(picks, heroSongId) { picks.filter { it.id != heroSongId }.take(12) }
     var pickingHero by remember { mutableStateOf(false) }
 
@@ -250,7 +298,7 @@ fun HomeScreen(
                     else if (TasteStore.totalListens < 10) "Learning your taste. The more you play, the better this gets."
                     else "Picked from how you've been listening",
                 ) {
-                    SmallTab("◈ ${heroMode.label.uppercase()}") { pickingHero = true }
+                    SmallTab(if (heroHidden) "◈ HERO HIDDEN" else "◈ ${heroMode.label.uppercase()}") { pickingHero = true }
                 }
             }
             if (hero == null) {
@@ -266,7 +314,7 @@ fun HomeScreen(
                     }
                 }
             } else {
-                item(key = "hero") {
+                if (!heroHidden) item(key = "hero") {
                     when (hero) {
                         is Hero.OfSong -> HeroCard(
                             art = hero.song,
@@ -286,6 +334,16 @@ fun HomeScreen(
                             active = state.current != null && hero.group.songs.any { it.id == state.current?.id },
                             onClick = { onOpenGroup(hero.group) },
                             onPlay = { vm.playList(hero.group.songs, 0) },
+                            onLongPress = { onOpenGroup(hero.group) },
+                        )
+                        is Hero.FromList -> HeroCard(
+                            art = hero.song,
+                            reason = hero.reason,
+                            title = hero.song.title,
+                            subtitle = hero.song.artist,
+                            active = state.current?.id == hero.song.id,
+                            onClick = { vm.playShuffledFrom(hero.group.songs, hero.song) },
+                            onPlay = { vm.playShuffledFrom(hero.group.songs, hero.song) },
                             onLongPress = { onOpenGroup(hero.group) },
                         )
                         null -> Unit
@@ -422,7 +480,11 @@ fun HomeScreen(
     }
     if (pickingHero) {
         ModalBottomSheet(onDismissRequest = { pickingHero = false }, containerColor = PanelSolid, contentColor = TextHi) {
-            Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 32.dp)) {
+            Column(
+                Modifier
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 20.dp, end = 20.dp, bottom = 32.dp)
+            ) {
                 Text(
                     "HERO SHOWS",
                     color = MaterialTheme.colorScheme.primary,
@@ -451,7 +513,33 @@ fun HomeScreen(
                         )
                         Text(m.blurb, color = TextLo, fontSize = 12.sp, modifier = Modifier.padding(start = 22.dp))
                     }
+                    if (m == HeroMode.CHOSEN_LIST && (on || heroList.isBlank())) {
+                        val usable = listGroups.filter { it.songs.isNotEmpty() }
+                        if (usable.isEmpty()) {
+                            Text("Make a playlist first.", color = TextLo, fontSize = 12.sp, modifier = Modifier.padding(start = 26.dp, bottom = 6.dp))
+                        } else {
+                            androidx.compose.foundation.layout.FlowRow(
+                                Modifier.padding(start = 22.dp, bottom = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                usable.forEach { g ->
+                                    NeonChip(g.title, on && g.key == heroList) {
+                                        vm.setHeroList(g.key)
+                                        vm.setHeroMode(HeroMode.CHOSEN_LIST)
+                                        pickingHero = false
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
+                Spacer(Modifier.height(8.dp))
+                ToggleRow(
+                    "Hide the hero card",
+                    "The picks row stays. Open this tab again to bring the card back.",
+                    heroHidden,
+                ) { vm.setHeroHidden(it) }
             }
         }
     }

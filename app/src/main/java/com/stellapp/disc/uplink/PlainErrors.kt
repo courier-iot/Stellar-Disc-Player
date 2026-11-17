@@ -8,9 +8,9 @@ object PlainErrors {
 
     private val rules: List<Pair<Regex, String>> = listOf(
         rx("sign in to confirm|confirm you.?re not a bot|cookies.*(needed|required)|use --cookies") to
-            "The site thinks we're a bot. Connect your account in Settings → Uplink engine, then try again.",
+            "The site thinks we're a bot. Connect your account in Settings → Uplink, then try again.",
         rx("age.?restrict|confirm your age|inappropriate for some users") to
-            "Age-restricted. Connect your account in Settings → Uplink engine to unlock it.",
+            "Age-restricted. Connect your account in Settings → Uplink to unlock it.",
         rx("private video|this video is private|playlist does not exist|is private") to
             "That one's private. Only its owner can reach it.",
         rx("members.?only|join this channel|premium|subscriber") to
@@ -36,7 +36,7 @@ object PlainErrors {
         rx("ffmpeg|postprocess|conversion failed") to
             "Downloaded, but converting it failed. Try a different quality.",
         rx("js.?runtime|jsc|nsig|signature extraction|n challenge") to
-            "YouTube changed its locks. Settings → Uplink engine → update yt-dlp, then try again.",
+            "YouTube changed its locks. Settings → System → Credits & Support → update yt-dlp, then try again.",
     )
 
     private fun rx(p: String) = Regex(p, RegexOption.IGNORE_CASE)

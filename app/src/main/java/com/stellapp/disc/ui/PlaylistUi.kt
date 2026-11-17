@@ -41,7 +41,11 @@ import com.stellapp.disc.ui.theme.PanelSolid
 import com.stellapp.disc.ui.theme.TextHi
 import com.stellapp.disc.ui.theme.TextLo
 
-val DangerRed: Color get() = if (com.stellapp.disc.ui.theme.ThemeState.ink) Color(0xFFB3122B) else Color(0xFFFF4D6D)
+val DangerRed: Color get() = when {
+    com.stellapp.disc.ui.theme.ThemeState.ink && com.stellapp.disc.ui.theme.ThemeState.inkDark -> Color(0xFFFF6B7F)
+    com.stellapp.disc.ui.theme.ThemeState.ink -> Color(0xFFB3122B)
+    else -> Color(0xFFFF4D6D)
+}
 
 @Composable
 fun NameDialog(
@@ -161,6 +165,27 @@ fun SongActionSheet(
                 }
             }
             if (onEdit != null) SheetAction("Edit info & cover") { onEdit() }
+            if (song.isVideo && !song.isStream) {
+                if (song.inAppFolder) {
+                    SheetAction("✓ Counts as music (saved by Uplink)", color = TextLo) { onDismiss() }
+                } else {
+                    val one = com.stellapp.disc.data.MusicVideos.markedOne(song)
+                    val folder = com.stellapp.disc.data.MusicVideos.markedFolder(song)
+                    if (!folder) {
+                        SheetAction(if (one) "♪ Stop counting as music" else "♪ Count as music") {
+                            vm.setVideoAsMusic(song, !one)
+                            onDismiss()
+                        }
+                    }
+                    if (song.folder.isNotBlank()) {
+                        val name = song.folder.substringAfterLast('/')
+                        SheetAction(if (folder) "♪ Stop counting \"$name\" as music" else "♪ Count all of \"$name\" as music") {
+                            vm.setVideoAsMusic(song, !folder, wholeFolder = true)
+                            onDismiss()
+                        }
+                    }
+                }
+            }
             if (onHideFolder != null && song.folder.isNotBlank()) {
                 SheetAction("Hide folder \"${song.folder.substringAfterLast('/')}\"") { onHideFolder() }
             }

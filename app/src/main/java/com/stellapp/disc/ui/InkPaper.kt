@@ -37,7 +37,7 @@ internal fun DrawScope.drawInkPaper() {
         val start = Offset(c.x + cos(a) * inner, c.y + sin(a) * inner)
         val end = Offset(c.x + cos(a) * far, c.y + sin(a) * far)
         drawLine(
-            InkBlack.copy(alpha = if (i % 4 == 0) 0.10f else 0.05f),
+            InkBlack.copy(alpha = (if (i % 4 == 0) 0.10f else 0.05f) * (if (com.stellapp.disc.ui.theme.ThemeState.inkDark) 0.7f else 1f)),
             start,
             end,
             strokeWidth = if (i % 4 == 0) 2.dp.toPx() else 1.dp.toPx(),
@@ -49,6 +49,8 @@ internal fun DrawScope.drawInkPaper() {
     val maxR = step * 0.32f
     val reach = minOf(w, h) * 0.55f
     val corners = listOf(Offset(w, 0f), Offset(0f, h))
+    // Pale dots on charcoal glare more than black dots on paper, so they're dimmed.
+    val dotAlpha = if (com.stellapp.disc.ui.theme.ThemeState.inkDark) 0.22f else 0.55f
     corners.forEach { corner ->
         var y = 0f
         while (y <= h) {
@@ -57,7 +59,7 @@ internal fun DrawScope.drawInkPaper() {
                 val d = hypot(x - corner.x, y - corner.y)
                 if (d < reach) {
                     val r = maxR * (1f - d / reach)
-                    if (r > 0.4f) drawCircle(InkBlack.copy(alpha = 0.55f), r, Offset(x, y))
+                    if (r > 0.4f) drawCircle(InkBlack.copy(alpha = dotAlpha), r, Offset(x, y))
                 }
                 x += step
             }

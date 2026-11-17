@@ -36,6 +36,7 @@ class LibraryTransfer(
         val byId = allSongs().associateBy { it.id }
         val prefs = settings.toJson().put("fade", PlaybackExtras.fadeSeconds.value)
         prefs.put("library", buildExtras())
+        prefs.put("musicVideoFolders", org.json.JSONArray(MusicVideos.folders.value.toList()))
         // Your own backdrop photo travels with the backup.
         val photo = CustomBackdrop.file(ctx)
         if (photo.exists() && photo.length() in 1L..6_000_000L) {
@@ -99,6 +100,9 @@ class LibraryTransfer(
                     }
                     settings.restore(it)
                     if (it.has("fade")) setFade(it.optInt("fade", 0))
+                    it.optJSONArray("musicVideoFolders")?.let { arr ->
+                        for (i in 0 until arr.length()) arr.optString(i).takeIf { f -> f.isNotBlank() }?.let { f -> MusicVideos.setFolder(ctx, f, true) }
+                    }
                     it.optJSONArray("library")?.let { arr -> extrasNote = restoreExtras(arr) }
                 }
                 post("Restored ${lists.size} playlist(s) · matched $matched of $total tracks" + extrasNote)

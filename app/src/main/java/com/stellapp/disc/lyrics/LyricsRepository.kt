@@ -32,6 +32,10 @@ class LyricsRepository(
                 LyricsStore.save(ctx, song.id, it)
                 return@withContext LrcParser.parse(it, "lrclib.net")
             }
+            LyricsOvh.find(song.title, song.artist)?.let {
+                LyricsStore.save(ctx, song.id, it)
+                return@withContext LrcParser.parse(it, "lyrics.ovh")
+            }
         }
         null
     }
@@ -39,15 +43,29 @@ class LyricsRepository(
     fun findOnline(song: Song) {
         scope.launch {
             post("Searching lrclib.net…")
-            val text = LrcLib.find(song.title, song.artist, song.album, song.durationMs)
+            var text = LrcLib.find(song.title, song.artist, song.album, song.durationMs)
+            var from = "lrclib.net"
+            if (text == null) {
+                text = LyricsOvh.find(song.title, song.artist)
+                from = "lyrics.ovh"
+            }
             if (text != null) {
                 withContext(Dispatchers.IO) { LyricsStore.save(ctx, song.id, text) }
                 _version.update { it + 1 }
-                post("Lyrics found")
+                post("Lyrics found on $from")
             } else {
-                post("No lyrics found for this track")
+                post("No lyrics found. Try SEARCH to look it up by hand.")
             }
         }
+    }
+
+    /** The manual search: lrclib.net results plus a lyrics.ovh match, if either has one. */
+    suspend fun searchManual(title: String, artist: String): List<LyricsHit> {
+        val hits = LrcLib.search(title, artist).toMutableList()
+        LyricsOvh.find(title, artist)?.let { text ->
+            hits += LyricsHit(title, artist, "", 0, synced = false, text = text, source = "lyrics.ovh")
+        }
+        return hits
     }
 
     fun save(song: Song, text: String) {

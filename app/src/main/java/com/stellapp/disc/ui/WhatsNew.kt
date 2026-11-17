@@ -3,6 +3,24 @@ package com.stellapp.disc.ui
 /** Shown once after each update. Keep the newest version first. */
 object WhatsNew {
     val notes: Map<String, String> = linkedMapOf(
+        "3.6.0" to """
+            ADDED
+            • Videos count as music: Uplink videos join shuffle mixes, and any other video (or a whole
+              folder) can too. Long-press it and pick Count as music
+            • Home hero card: Hourly pick, Time-of-day pick, From a playlist (a random song, then the
+              whole list shuffled), and Hide the hero card
+            • Charcoal paper for Ink & Screentone: grey paper and pale ink for night-time
+            • Lyrics: lyrics.ovh as a backup when lrclib.net has nothing, and ⌕ SEARCH to fix the title
+              or artist and pick the right match yourself
+            • FX rack: surround, loudness, reverb, left/right balance, pitch and speed, as fold-down
+              cards side by side. Save your own sounds next to the built-in presets
+
+            CHANGED
+            • Settings is now a hub: Visuals, Audio, FX rack, Uplink, Archive and System, each with
+              fold-out groups
+            • Player backdrops sit in an even grid with two-line names
+            • Uplink's Live feed button has room to breathe
+        """.trimIndent(),
         "3.2.1" to """
             CHANGED
             • Moving phones: the old phone now waits up to an hour while you choose, instead of 10 minutes

@@ -194,7 +194,7 @@ internal fun NearbyShare(name: String, tracks: List<Song>, move: com.stellapp.di
             }
             Spacer(Modifier.height(16.dp))
             Text(
-                if (move != null) "On the new phone: Stellar Disc → Settings → Receive from your old phone (or Swap → Scan QR code)"
+                if (move != null) "On the new phone: Stellar Disc → Settings → Archive → Receive from your old phone (or Swap → Scan QR code)"
                 else "On your friend's phone: Stellar Disc → swap icon → Scan QR code",
                 color = TextHi,
                 textAlign = TextAlign.Center,

@@ -410,7 +410,7 @@ fun DiscApp(vm: PlayerViewModel, inPip: Boolean, onEnterPip: () -> Unit) {
         }
 
         Overlay(showEq) {
-            EqualizerScreen(animate = animate && !showVideo, onClose = { showEq = false })
+            EqualizerScreen(vm = vm, animate = animate && !showVideo, onClose = { showEq = false })
         }
 
         Overlay(showStats) {
